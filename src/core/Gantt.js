@@ -7,42 +7,78 @@ export const Gantt = (function () {
         this.init = function (model) {
             models = model;
 
-            this.isRequest();
-            this.renderChart();
+            window.addEventListener('keydown', this.workRedo);
+            window.addEventListener('keydown', this.workUndo);
+            window.addEventListener('click', this.emptyCopiedAttrs);
+            window.addEventListener('click', this.pasteCopiedAttrs);
+            window.addEventListener('click', this.copyAttrs);
             window.addEventListener('click', this.exportResult);
             window.addEventListener('click', this.deleteRowCol);
             window.addEventListener('click', this.addRowCol);
             window.addEventListener('click', this.toggleInput);
+            window.addEventListener('click', this.closePopupControlList);
             window.addEventListener('mouseover', this.popupDeleteBtn);
             window.addEventListener('mouseover', this.popupAddBtn);
             window.addEventListener('contextmenu', this.popupControlList);
             window.addEventListener('change', this.autoValueChange);
+            window.addEventListener('input', this.autoAttrsValueChange);
             window.addEventListener('keydown', this.inputKey);
         }
 
-        this.isRequest = function (){
-            if(location.search == '') return;
+        this.workUndo = function (ev){
+            if(!(ev.key=='z' && ev.ctrlKey)) return;
 
-            const params = new Map(location.search.slice(1).split('&').map(a=>a.split('=')));
-            switch(params.get('req')){
-                case 'true': setTimeout(() => {
-                    document.body.innerHTML = `<div id="gantt">${document.querySelector('#gantt table#chart').outerHTML}</div>`;
-                }); break;
-                case 'false': console.log(''); break;
-            }
+            models.workUndo();
+        }
+
+        this.workRedo = function (ev){
+            if(!(ev.key=='y' && ev.ctrlKey)) return;
+
+            models.workRedo();
+        }
+
+        this.emptyCopiedAttrs = function (ev){
+            const target = ev.target;
+            const controlList = target.closest('.control-list');
+            if(target.id != 'clearAttrs') return;
+
+            models.emptyCopiedAttrs(target, controlList);
+        }
+
+        this.pasteCopiedAttrs = function (ev){
+            const target = ev.target;
+            const controlList = target.closest('.control-list');
+            if(target.id != 'pasteAttrs') return;
+
+            models.pasteCopiedAttrs(target, controlList);
+        }
+
+        this.copyAttrs = function (ev){
+            const target = ev.target;
+            const controlList = target.closest('.control-list');
+            if(target.id != 'copyAttrs') return;
+
+            models.copyAttrs(target, controlList);
         }
 
         this.popupControlList = function (ev){
             const target = ev.target;
             const closest = target.closest('th,td');
-            if(!closest) {
-                if(document.querySelector('.control-list')) document.querySelector('.control-list').remove();
-                return;
-            }
+
+            if(document.querySelector('.control-list')) document.querySelector('.control-list').remove();
+
+            if(!closest) return;
 
             ev.preventDefault();
 
             models.popupControlList(closest, ev);
+        }
+
+        this.closePopupControlList = function(ev){
+            const target = ev.target;
+            const closest = target.closest('.control-list');
+
+            if(!closest) document.querySelectorAll('.control-list').forEach(el=>el.remove());
         }
 
         this.exportResult = function (ev){
@@ -52,13 +88,22 @@ export const Gantt = (function () {
             models.exportResult(target);
         }
 
+        this.autoAttrsValueChange = function (ev){
+            const target = ev.target;
+            if(!target.classList.contains('attrs')) return;
+
+            models.autoAttrsValueChange(target);
+        }
+
         this.autoValueChange = function (ev){
             const target = ev.target;
             if(blockAutoChange) {
                 blockAutoChange = false;
                 return;
             }
+
             if(target.tagName != 'TEXTAREA') return;
+
             models.autoValueChange(target);
         }
 
@@ -179,13 +224,10 @@ export const Gantt = (function () {
             
             models.popupAddBtn(target);
         }
-
-        this.renderChart = function () {
-            models.renderChart();
-        }
     }
 
     function Model() {
+        const copiedAttrs = {};
         let views;
         let gantt = {
             head: [
@@ -205,11 +247,149 @@ export const Gantt = (function () {
                 ],
             ],
         };
+        let history = [];
+        let hisIndex = 0;
 
         this.init = function (view) {
             views = view;
 
             gantt = this.getStorage();
+
+            this.addHistory();
+
+            this.renderChart();
+        }
+
+        this.addHistory = function (){
+            const head = [...gantt.head].map(h=>[...h].map(k=>{
+                const temp = {};
+                Object.entries(k.attr).forEach(([k,v])=>temp[k]=v);
+                return {
+                    text: k.text,
+                    attr: temp,
+                };
+            }));
+            const body = [...gantt.body].map(h=>[...h].map(k=>{
+                const temp = {};
+                Object.entries(k.attr).forEach(([k,v])=>temp[k]=v);
+                return {
+                    text: k.text,
+                    attr: temp,
+                };
+            }));
+
+            let temp = {head: head, body: body};
+            history.splice(hisIndex+1, 0, temp);
+            hisIndex = history.indexOf(temp)+1;
+            history = history.slice(0, hisIndex+1);
+            console.log(history, hisIndex)
+        }
+
+        this.workUndo = function (ev){
+            if(hisIndex>0){
+                hisIndex--;
+                gantt = history[hisIndex];
+                console.log(hisIndex, history)
+                this.setStorage(gantt);
+                views.renderChart(gantt);
+            }
+        }
+
+        this.workRedo = function (ev){
+            if(hisIndex<history.length-1){
+                hisIndex++;
+                gantt = history[hisIndex];
+                console.log(hisIndex, history)
+                this.setStorage(gantt);
+                views.renderChart(gantt);
+            }
+        }
+
+        this.clearCopiedAttrs = function (){
+            Object.keys(copiedAttrs).forEach(e=>delete copiedAttrs[e]);
+        }
+
+        this.emptyCopiedAttrs = function (target, controlList){
+            this.clearCopiedAttrs();
+            
+            views.clearControlList();
+
+            this.renderChart();
+        }
+
+        this.copyAttrs = function (target, controlList){
+            this.clearCopiedAttrs();
+
+            const {type, rowid, colid} = controlList.attributes;
+            const ganttType = type.value=='TH'?'head':'body';
+            Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
+
+            views.clearControlList();
+
+            this.renderChart();
+        }
+
+        this.pasteCopiedAttrs = function (target, controlList){
+            const {type, rowid, colid} = controlList.attributes;
+            const ganttType = type.value=='TH'?'head':'body';
+            gantt[ganttType][rowid.value][colid.value].attr = {};
+
+            this.addHistory();
+
+            Object.entries(copiedAttrs).forEach(([key, val])=>{
+                gantt[ganttType][rowid.value][colid.value].attr[key] = val;
+
+                document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).style[key] = val;
+            })
+
+            views.clearControlList();
+
+            this.renderChart();
+        }
+
+        this.autoAttrsValueChange = function (target){
+            const closest = target.closest('ul.control-list');
+            const type = closest.getAttribute('type');
+            const ganttType = type=='TH'?'head':'body';
+            const {rowid, colid} = closest.attributes;
+            let hex, rgb, opacity, hexOpacity, bgHex, bgRgb, bgOpacity, hexBgOpacity, fontSize, unit, parent;
+
+            switch(target.id){
+                case 'color': case 'colorOpacity':
+                    parent = target.parentNode;
+                    hex = parent.querySelector('#color').value;
+                    opacity = parseInt(parent.querySelector('#colorOpacity').value);
+                    rgb = hex.slice(1).match(/.{1,2}/g).map(e=>parseInt(e, 16));
+
+                    hexOpacity = opacity.toString(16);
+
+                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['color'] = hex+hexOpacity;
+                    gantt[ganttType][rowid.value][colid.value].attr['color'] = hex+hexOpacity;
+                    break;
+                    case 'backgroundColor': case 'backgroundColorOpacity':
+                    parent = target.parentNode;
+                    bgHex = parent.querySelector('#backgroundColor').value;
+                    bgOpacity = parseInt(parent.querySelector('#backgroundColorOpacity').value);
+                    bgRgb = bgHex.slice(1).match(/.{1,2}/g).map(e=>parseInt(e, 16));
+
+                    hexBgOpacity = bgOpacity.toString(16);
+
+                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['backgroundColor'] = bgHex+hexBgOpacity;
+                    gantt[ganttType][rowid.value][colid.value].attr['backgroundColor'] = bgHex+hexBgOpacity;
+                    break;
+                case 'fontSize': case 'unit':
+                    parent = target.parentNode;
+                    fontSize = parent.querySelector('#fontSize').value;
+                    unit = parent.querySelector('#unit').value;
+                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['fontSize'] = fontSize+unit;
+                    gantt[ganttType][rowid.value][colid.value].attr['fontSize'] = fontSize+unit;
+                    break;
+            }
+
+            this.addHistory();
+
+            this.setStorage(gantt);
+            views.renderChart(gantt);
         }
 
         this.popupControlList = function (closest, ev){
@@ -223,7 +403,7 @@ export const Gantt = (function () {
                 case 'TD': originData = gantt.body[rowId][colId]; break;
             }
 
-            views.popupControlList(closest, originData, ev);
+            views.popupControlList(closest, originData, ev, Object.keys(copiedAttrs).length);
         }
 
         this.getStorage = function(){
@@ -238,25 +418,19 @@ export const Gantt = (function () {
         }
 
         this.exportResult = function (target){
-            const ganttBody = document.querySelector("#gantt");
-            ganttBody.querySelector('table#chart').style.cssText = `
-                border-collapse: collapse;
-                width: 100%;
-            `;
-            ganttBody.querySelectorAll('table th').forEach(el=>el.style.cssText = `
-                background-color: gray;
-                font-weight: bold;
-                user-select: none;
-                padding: .5rem;
-                position: relative;
-            `);
-            ganttBody.querySelectorAll('table td').forEach(el=>el.style.cssText = `
-                user-select: none;
-                padding: .5rem;
-                position: relative;
-            `);
-            navigator.clipboard.writeText(document.querySelector("#gantt").innerHTML.trim().replace(/\s{2,}/g, ' ')).then(
-            clipText =>  console.log(document.querySelector("#gantt").innerHTML.trim().replace(/\s{2,}/g, ' '),'를 복사했습니다'));
+            const ganttBody = document.querySelector("#gantt #chart");
+            
+            ganttBody.style.borderCollapse = `collapse`;
+            ganttBody.style.width = '100%';
+
+            ganttBody.querySelectorAll('th,td').forEach(el=>{
+                el.style.userSelect = `none`;
+                el.style.padding = `0.5rem`;
+                el.style.position = 'relative';
+            });
+
+            navigator.clipboard.writeText(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' ')).then(
+            clipText =>  console.log(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' '),'를 복사했습니다'));
         }
 
         this.autoValueChange = function (target){
@@ -264,6 +438,8 @@ export const Gantt = (function () {
             const value = target.value;
 
             const {rowid, colid} = parent.attributes;
+            
+            this.addHistory();
 
             if(parent.tagName == 'TH'){
                 gantt.head[rowid.value][colid.value].text = value;
@@ -277,6 +453,9 @@ export const Gantt = (function () {
         this.deleteRowCol = function (target) {
             const {type, rowid, colid, direction} = target.attributes;
             const dir = direction.value;
+
+            this.addHistory();
+
             if(dir=='row'){
                 if(type.value == 'TH') this.delHeadRow(rowid.value);
                 else this.delBodyRow(rowid.value);
@@ -291,6 +470,9 @@ export const Gantt = (function () {
         this.addRowCol = function (target) {
             const {type, rowid, colid, direction} = target.attributes;
             const dir = direction.value;
+
+            this.addHistory();
+
             if(dir=='bottom'){
                 if(type.value == 'TH') this.addHeadRow(rowid.value);
                 else this.addBodyRow(rowid.value);
@@ -383,9 +565,9 @@ export const Gantt = (function () {
             this.renderTable();
         }
 
-        this.popupControlList = function (target, data, ev){
-            console.log(ev.x, ev.y, ev.x-ev.offsetX, ev.y-ev.offsetY)
-            parts.controlList.render(ev, data);
+        this.popupControlList = function (target, data, ev, isCopied){
+            // console.log(ev.x, ev.y, ev.x-ev.offsetX, ev.y-ev.offsetY)
+            parts.controlList.render(target, data, ev, isCopied);
         }
 
         this.renderTable = function (){
@@ -438,7 +620,6 @@ export const Gantt = (function () {
                 let tr = document.createElement('tr');
                 rows.forEach((cols, colId)=>{
                     let td = document.createElement('td');
-                    console.log(cols.attr);
 
                     Object.entries(cols.attr).forEach(([key, val])=>{
                         td.style[key] = val;
@@ -451,6 +632,10 @@ export const Gantt = (function () {
                 });
                 tbody.append(tr);
             });
+        }
+
+        this.clearControlList = function (){
+            document.querySelectorAll('.control-list').forEach(el=>el?.remove());
         }
 
         this.clearBtns = function (){
@@ -483,39 +668,67 @@ export const Gantt = (function () {
                     }
                 },
                 controlList: {
-                    render({x, y}, data){
+                    render(target, data, {x, y}, isCopied){
+                        const {rowid, colid} = target.attributes;
                         const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/).slice(1)||[0,'rem'];
+
+                        const hex = data.attr.color?.slice(0,7)||'#000000';
+                        const bgHex = data.attr.backgroundColor?.slice(0,7)||'#ffffff';
+                        const opacity = parseFloat(parseInt((data.attr.color?.slice(7, 9)||'ff'), 16).toFixed(2));
+                        const bgOpacity = parseFloat(parseInt((data.attr.backgroundColor?.slice(7, 9)||'ff'), 16).toFixed(2));
+
                         ganttChart.insertAdjacentHTML('beforeend', `
                             <ul
+                            type="${target.tagName}"
                             class="control-list"
+                            rowid="${rowid.value}"
+                            colid="${colid.value}"
                             style="
                                 top: ${y}px;
                                 left: ${x}px;
                             ">
                                 <li class="text-center">
+                                    ${isCopied>0?`
+                                        <button id="pasteAttrs" class="btn">Pates</button>
+                                    `:`
+                                        <button id="pasteAttrs" class="btn" disabled>Pates</button>
+                                    `}
+                                    <button id="copyAttrs" class="btn">Copy</button>
+                                    <button id="clearAttrs" class="btn clear">Clear</button>
+                                </li>
+                                <li class="text-center">
                                     Color
-                                    <input type="color" id="color" class="form-input">
+                                    <br>
+                                    <input type="color" id="color" class="form-input attrs" value="${hex}">
+                                    <br>
+                                    <input type="range" step="1" min="16" max="255" class="form-input attrs" id="colorOpacity" value="${opacity}">
+                                </li>
+                                <li class="text-center">
+                                    bgColor
+                                    <br>
+                                    <input type="color" id="backgroundColor" class="form-input attrs" value="${bgHex}">
+                                    <br>
+                                    <input type="range" step="1" min="16" max="255" class="form-input attrs" id="backgroundColorOpacity" value="${bgOpacity}">
                                 </li>
                                 <li class="text-center">
                                     Font size
-                                    <input type="number" value="${number}" min="0" class="form-input">
-                                    <select id="unit" class="form-input" value="${unit}">
-                                        <option value="px">px</option>
-                                        <option value="cm">cm</option>
-                                        <option value="mm">mm</option>
-                                        <option value="in">in</option>
-                                        <option value="pc">pc</option>
-                                        <option value="pt">pt</option>
-                                        <option value="ch">ch</option>
-                                        <option value="em">em</option>
-                                        <option value="rem">rem</option>
-                                        <option value="vh">vh</option>
-                                        <option value="vw">vw</option>
-                                        <option value="vmin">vmin</option>
-                                        <option value="vmax">vmax</option>
+                                    <input id="fontSize" type="number" value="${number||16}" min="0" class="form-input attrs">
+                                    <select id="unit" class="form-input attrs">
+                                        <option${(unit||'px')=='px'?' selected':''} value="px">px</option>
+                                        <option${(unit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                        <option${(unit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                        <option${(unit||'px')=='in'?' selected':''} value="in">in</option>
+                                        <option${(unit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                        <option${(unit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                        <option${(unit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                        <option${(unit||'px')=='em'?' selected':''} value="em">em</option>
+                                        <option${(unit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                        <option${(unit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                        <option${(unit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                        <option${(unit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                        <option${(unit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
                                     </select>
                                 </li>
-                                <li class="text-center">3</li>
                             </ul>
                         `);
                     }
@@ -545,7 +758,7 @@ export const Gantt = (function () {
                         style="
                         top: ${rect.top + rect.height}px;
                         left: ${rect.right - (rect.width/2)}px;
-                        transform: translate(0%, -50%);
+                        transform: translate(-50%, -50%);
                         ">
                             ➕
                         </span>`.replace(/[\s]+/g, ' '));
@@ -566,7 +779,7 @@ export const Gantt = (function () {
                         style="
                         top: ${tableTop}px;
                         left: ${rect.right - target.clientWidth/2}px;
-                        transform: translate(0%, -100%);
+                        transform: translate(-50%, -100%);
                         ">
                             ❌
                         </span>
