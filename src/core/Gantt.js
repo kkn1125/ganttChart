@@ -2,13 +2,15 @@ export const Gantt = (function () {
     const ganttChart = document.querySelector('#gantt');
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol;
 
         this.init = function (model) {
             models = model;
 
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
+            window.addEventListener('click', this.borderReset);
+            window.addEventListener('click', this.movingRowCol);
             window.addEventListener('click', this.emptyCopiedAttrs);
             window.addEventListener('click', this.pasteCopiedAttrs);
             window.addEventListener('click', this.copyAttrs);
@@ -45,6 +47,23 @@ export const Gantt = (function () {
             models.emptyCopiedAttrs(target, controlList);
         }
 
+        this.borderReset = function (ev){
+            const target = ev.target;
+            const controlList = target.closest('.control-list');
+            if(target.id!='bReset') return;
+
+            models.borderReset(target, controlList);
+        }
+
+        this.movingRowCol = function (ev){
+            const target = ev.target;
+            const controlList = target.closest('.control-list');
+
+            if(!target.classList.contains('move')) return;
+
+            models.movingRowCol(target, controlList);
+        }
+        
         this.pasteCopiedAttrs = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
@@ -83,6 +102,10 @@ export const Gantt = (function () {
 
         this.exportResult = function (ev){
             const target = ev.target;
+
+            tempRow = 0;
+            tempCol = 0;
+
             if(target.id!='export') return;
 
             models.exportResult(target);
@@ -92,6 +115,10 @@ export const Gantt = (function () {
             const target = ev.target;
             if(!target.classList.contains('attrs')) return;
 
+            document.querySelectorAll('.active').forEach(el=>el.classList.remove('active'));
+            if(target.type == 'radio'){
+                target.previousElementSibling.classList.add('active');
+            }
             models.autoAttrsValueChange(target);
         }
 
@@ -129,6 +156,41 @@ export const Gantt = (function () {
                     save = null;
                     saveContent = null;
                     toggler = false;
+                } else if(ev.key == 'Tab'){
+                    parent.classList.remove('active');
+                    target.blur();
+                    parent.innerHTML = target.value.replace(/[\n]/gm, '<br>');
+                    save = null;
+                    saveContent = null;
+                    toggler = false;
+
+                    let {rowid, colid} = parent.attributes;
+                    let getTHTD;
+                    let tagName = parent.tagName;
+
+                    if(!tempRow) tempRow = parseInt(rowid.value);
+                    if(!tempCol) tempCol = parseInt(colid.value);
+
+                    getTHTD = document.querySelector(`${tagName}[rowid="${tempRow}"][colid="${++tempCol}"]`);
+
+                    if(!getTHTD) {
+                        tempRow++;
+                        tempCol = 0;
+                        getTHTD = document.querySelector(`${tagName}[rowid="${tempRow}"][colid="${tempCol}"]`);
+                        if(!getTHTD){
+                            tagName = 'TD';
+                            tempRow = 0;
+                            tempCol = 0;
+                            getTHTD = document.querySelector(`${tagName}[rowid="${tempRow}"][colid="${tempCol}"]`);
+                        }
+                    }
+
+                    console.log(getTHTD)
+                    getTHTD.click();
+                    getTHTD.querySelector('textarea').focus();
+                    setTimeout(() => {
+                        getTHTD.querySelector('textarea').select();
+                    }, 1);
                 }
             }
         }
@@ -177,6 +239,7 @@ export const Gantt = (function () {
                 ta.value = save.innerHTML.replace(/<br>/g, '\n');
                 save.insertAdjacentElement('beforeend', ta);
                 ta.focus();
+                ta.select();
             } else {
                 ta.remove();
                 save = null;
@@ -282,14 +345,12 @@ export const Gantt = (function () {
             history.splice(hisIndex+1, 0, temp);
             hisIndex = history.indexOf(temp)+1;
             history = history.slice(0, hisIndex+1);
-            console.log(history, hisIndex)
         }
 
         this.workUndo = function (ev){
             if(hisIndex>0){
                 hisIndex--;
                 gantt = history[hisIndex];
-                console.log(hisIndex, history)
                 this.setStorage(gantt);
                 views.renderChart(gantt);
             }
@@ -299,7 +360,6 @@ export const Gantt = (function () {
             if(hisIndex<history.length-1){
                 hisIndex++;
                 gantt = history[hisIndex];
-                console.log(hisIndex, history)
                 this.setStorage(gantt);
                 views.renderChart(gantt);
             }
@@ -310,10 +370,118 @@ export const Gantt = (function () {
         }
 
         this.emptyCopiedAttrs = function (target, controlList){
+            views.clearControlList();
+            this.renderChart();
             this.clearCopiedAttrs();
+        }
+
+        this.borderReset = function (target, controlList){
+            this.addHistory();
+
+            document.querySelectorAll('td,th').forEach(el=>{
+                el.style['borderWidth'] = '';
+                el.style['borderTopWidth'] = '';
+                el.style['borderBottomWidth'] = '';
+                el.style['borderLeftWidth'] = '';
+                el.style['borderRightWidth'] = '';
+                el.style['borderColor'] = '';
+                el.style['borderTopColor'] = '';
+                el.style['borderBottomColor'] = '';
+                el.style['borderLeftColor'] = '';
+                el.style['borderRightColor'] = '';
+                el.style['borderStyle'] = '';
+                el.style['borderTopStyle'] = '';
+                el.style['borderBottomStyle'] = '';
+                el.style['borderLeftStyle'] = '';
+                el.style['borderRightStyle'] = '';
+            });
+
+            gantt.head = gantt.head.map(row=>{
+                return row.map(col=>{
+                    delete col.attr['borderWidth'];
+                    delete col.attr['borderTopWidth'];
+                    delete col.attr['borderBottomWidth'];
+                    delete col.attr['borderLeftWidth'];
+                    delete col.attr['borderRightWidth'];
+                    delete col.attr['borderColor'];
+                    delete col.attr['borderTopColor'];
+                    delete col.attr['borderBottomColor'];
+                    delete col.attr['borderLeftColor'];
+                    delete col.attr['borderRightColor'];
+                    delete col.attr['borderStyle'];
+                    delete col.attr['borderTopStyle'];
+                    delete col.attr['borderBottomStyle'];
+                    delete col.attr['borderLeftStyle'];
+                    delete col.attr['borderRightStyle'];
+                    return col;
+                });
+            });
+
+            gantt.body = gantt.body.map(row=>{
+                return row.map(col=>{
+                    delete col.attr['borderWidth'];
+                    delete col.attr['borderTopWidth'];
+                    delete col.attr['borderBottomWidth'];
+                    delete col.attr['borderLeftWidth'];
+                    delete col.attr['borderRightWidth'];
+                    delete col.attr['borderColor'];
+                    delete col.attr['borderTopColor'];
+                    delete col.attr['borderBottomColor'];
+                    delete col.attr['borderLeftColor'];
+                    delete col.attr['borderRightColor'];
+                    delete col.attr['borderStyle'];
+                    delete col.attr['borderTopStyle'];
+                    delete col.attr['borderBottomStyle'];
+                    delete col.attr['borderLeftStyle'];
+                    delete col.attr['borderRightStyle'];
+                    return col;
+                });
+            });
             
             views.clearControlList();
 
+            this.renderChart();
+        }
+
+        this.movingRowCol = function (target, controlList){
+            const {type, rowid, colid} = controlList.attributes;
+            const {moving} = target.attributes;
+            const ganttType = type.value=='TH'?'head':'body';
+            const rowId = parseInt(rowid.value);
+            const colId = parseInt(colid.value);
+            const move = moving.value;
+
+            this.addHistory();
+
+            switch(move){
+                case 'left':
+                    if(colId-1>=0) {
+                        gantt[ganttType].map(row=>{
+                            row.splice(colId-1, 0, row.splice(colId, 1).pop());
+                            return row;
+                        });
+                    }
+                    break;
+                case 'right':
+                    if(colId+1<gantt[ganttType][rowId].length) {
+                        gantt[ganttType].map(row=>{
+                            row.splice(colId+1, 0, row.splice(colId, 1).pop());
+                            return row;
+                        });
+                    }
+                    break;
+                case 'top':
+                    if(rowId-1>=0) {
+                        gantt[ganttType].splice(rowId-1, 0, gantt[ganttType].splice(rowId, 1).pop());
+                    }
+                    break;
+                case 'bottom':
+                    if(rowId+1<gantt[ganttType].length) {
+                        gantt[ganttType].splice(rowId+1, 0, gantt[ganttType].splice(rowId, 1).pop());
+                    }
+                    break;
+            }
+            
             this.renderChart();
         }
 
@@ -352,7 +520,7 @@ export const Gantt = (function () {
             const type = closest.getAttribute('type');
             const ganttType = type=='TH'?'head':'body';
             const {rowid, colid} = closest.attributes;
-            let hex, rgb, opacity, hexOpacity, bgHex, bgRgb, bgOpacity, hexBgOpacity, fontSize, unit, parent;
+            let hex, rgb, opacity, hexOpacity, bgHex, bgRgb, bgOpacity, hexBgOpacity, align, fontSize, unit, parent, bSize, bUnit;
 
             switch(target.id){
                 case 'color': case 'colorOpacity':
@@ -363,10 +531,26 @@ export const Gantt = (function () {
 
                     hexOpacity = opacity.toString(16);
 
-                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['color'] = hex+hexOpacity;
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr['color'] = hex+hexOpacity;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr['color'] = hex+hexOpacity;
+                                }
+                            });
+                        });
+                    }
+
                     gantt[ganttType][rowid.value][colid.value].attr['color'] = hex+hexOpacity;
                     break;
-                    case 'backgroundColor': case 'backgroundColorOpacity':
+
+                case 'backgroundColor': case 'backgroundColorOpacity':
                     parent = target.parentNode;
                     bgHex = parent.querySelector('#backgroundColor').value;
                     bgOpacity = parseInt(parent.querySelector('#backgroundColorOpacity').value);
@@ -374,20 +558,252 @@ export const Gantt = (function () {
 
                     hexBgOpacity = bgOpacity.toString(16);
 
-                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['backgroundColor'] = bgHex+hexBgOpacity;
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr['backgroundColor'] = bgHex+hexBgOpacity;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr['backgroundColor'] = bgHex+hexBgOpacity;
+                                }
+                            });
+                        });
+                    }
+
                     gantt[ganttType][rowid.value][colid.value].attr['backgroundColor'] = bgHex+hexBgOpacity;
                     break;
+
                 case 'fontSize': case 'unit':
                     parent = target.parentNode;
                     fontSize = parent.querySelector('#fontSize').value;
                     unit = parent.querySelector('#unit').value;
-                    document.querySelector(`${type}[rowid="${rowid.value}"][colid="${colid.value}"]`).style['fontSize'] = fontSize+unit;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr['fontSize'] = fontSize+unit;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr['fontSize'] = fontSize+unit;
+                                }
+                            });
+                        });
+                    }
+
                     gantt[ganttType][rowid.value][colid.value].attr['fontSize'] = fontSize+unit;
+                    break;
+
+                case 'al': case 'ac': case 'ar':
+                    parent = target.parentNode;
+                    align = target.value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr['textAlign'] = align;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr['textAlign'] = align;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr['textAlign'] = align;
+                    break;
+
+                case 'borderTopWidth': case 'borderBottomWidth': case 'borderLeftWidth': case 'borderRightWidth': case 'topUnit': case 'bottomUnit': case 'leftUnit': case 'rightUnit':
+                    parent = target.parentNode;
+                    bSize = parent.querySelector('#borderTopWidth, #borderBottomWidth, #borderLeftWidth, #borderRightWidth').value;
+                    bUnit = parent.querySelector('#topUnit, #bottomUnit, #leftUnit, #rightUnit').value;
+                    let getUnit = target.id.match(/(.+)Unit/);
+                    let direct = getUnit?getUnit[1]:'';
+                    let convert = direct?`border${direct.charAt(0).toUpperCase()+direct.slice(1)}Width`:target.id;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[convert] = bSize+bUnit;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row[colid.value].attr[convert] = bSize+bUnit;
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[convert] = bSize+bUnit;
+                    break;
+
+                case 'borderTopStyle': case 'borderBottomStyle': case 'borderLeftStyle': case 'borderRightStyle':
+                    parent = target.parentNode;
+                    let bStyle = target.value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[target.id] = bStyle;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr[target.id] = bStyle;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = bStyle;
+                    break;
+
+                case 'borderTopColor': case 'borderBottomColor': case 'borderLeftColor': case 'borderRightColor':
+                    parent = target.parentNode;
+                    let bColor = target.value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[target.id] = bColor;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr[target.id] = bColor;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = bColor;
+                    break;
+
+                case 'borderColor':
+                    parent = target.parentNode;
+                    let aColor = target.value;
+
+                    gantt[ganttType] = gantt[ganttType].map(row=>{
+                        return row.map(col=>{
+                            col.attr['borderColor'] = aColor;
+                            return col;
+                        });
+                    });
+                    break;
+
+                case 'borderWidth': case 'allUnit':
+                    parent = target.parentNode;
+
+                    let aSize = parent.querySelector('#borderWidth').value;
+                    let aUnit = parent.querySelector('#allUnit').value;
+
+                    gantt[ganttType] = gantt[ganttType].map(row=>{
+                        return row.map(col=>{
+                            col.attr['borderWidth'] = aSize + aUnit;
+                            return col;
+                        });
+                    });
+                    break;
+
+                 case 'borderStyle':
+                    parent = target.parentNode;
+                    let aStyle = target.value;
+
+                    gantt[ganttType] = gantt[ganttType].map(row=>{
+                        return row.map(col=>{
+                            col.attr['borderStyle'] = aStyle;
+                            return col;
+                        });
+                    });
+                    break;
+                    
+                 case 'fontWeight':
+                    parent = target.parentNode;
+                    let aWeight = target.value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[target.id] = aWeight;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr[target.id] = aWeight;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aWeight;
+                    break;
+
+                 case 'width':
+                    parent = target.parentNode;
+                    let aWidth = parent.querySelector('#width').value;
+                    let widthUnit = parent.querySelector('#widthUnit').value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[target.id] = aWidth+widthUnit;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr[target.id] = aWidth+widthUnit;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aWidth+widthUnit;
+                    break;
+
+                 case 'height':
+                    parent = target.parentNode;
+                    let aHeight = parent.querySelector('#height').value;
+                    let heightUnit = parent.querySelector('#heightUnit').value;
+
+                    if(closest.querySelector('#bRow').checked){
+                        gantt[ganttType][rowid.value].map(col=>{
+                            col.attr[target.id] = aHeight+heightUnit;
+                        });
+                    }
+
+                    if(closest.querySelector('#bCol').checked){
+                        gantt[ganttType].map(row=>{
+                            return row.map((col, cid)=>{
+                                if(cid==parseInt(colid.value)){
+                                    col.attr[target.id] = aHeight+heightUnit;
+                                }
+                            });
+                        });
+                    }
+
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aHeight+heightUnit;
                     break;
             }
 
             this.addHistory();
-
             this.setStorage(gantt);
             views.renderChart(gantt);
         }
@@ -410,6 +826,20 @@ export const Gantt = (function () {
             let temp;
             if(!localStorage['gantt']) this.setStorage(gantt);
             if(localStorage['gantt']) temp = JSON.parse(localStorage['gantt']);
+            temp.head.map(row=>{
+                return row.map(col=>{
+                    delete col.attr['[object HTMLInputElement]'];
+                    delete col.attr['allUnit'];
+                    return;
+                });
+            });
+            temp.body.map(row=>{
+                return row.map(col=>{
+                    delete col.attr['[object HTMLInputElement]'];
+                    delete col.attr['allUnit'];
+                    return;
+                });
+            });
             return temp;
         }
 
@@ -505,23 +935,31 @@ export const Gantt = (function () {
         }
 
         this.addHeadRow = function(rowid){
+            let temp = {};
+            Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
             rowid = parseInt(rowid);
-            gantt.head.splice(rowid + 1, 0, new Array(gantt.head[rowid].length).fill({text:'New Contents', attr:{}}));
+            gantt.head.splice(rowid + 1, 0, new Array(gantt.head[rowid].length).fill({text:'New Contents', attr: temp||{}}));
         }
 
         this.addBodyRow = function(rowid){
+            let temp = {};
+            Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
             rowid = parseInt(rowid);
-            gantt.body.splice(rowid + 1, 0, new Array(gantt.body[rowid].length).fill({text:'New Contents', attr:{}}));
+            gantt.body.splice(rowid + 1, 0, new Array(gantt.body[rowid].length).fill({text:'New Contents', attr: temp||{}}));
         }
 
         this.addHeadCol = function(colid){
+            let temp = {};
+            Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
             colid = parseInt(colid);
-            gantt.head.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr:{}}));
+            gantt.head.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr: temp||{}}));
         }
 
         this.addBodyCol = function(colid){
+            let temp = {};
+            Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
             colid = parseInt(colid);
-            gantt.body.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr:{}}));
+            gantt.body.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr: temp||{}}));
         }
 
         this.popupDeleteBtn = function (target){
@@ -557,7 +995,7 @@ export const Gantt = (function () {
     }
 
     function View() {
-        let parts, chart, thead, tbody, temp;
+        let parts, chart, thead, tbody, temp, isMoved;
 
         this.init = function (part) {
             parts = part;
@@ -566,7 +1004,6 @@ export const Gantt = (function () {
         }
 
         this.popupControlList = function (target, data, ev, isCopied){
-            // console.log(ev.x, ev.y, ev.x-ev.offsetX, ev.y-ev.offsetY)
             parts.controlList.render(target, data, ev, isCopied);
         }
 
@@ -586,8 +1023,10 @@ export const Gantt = (function () {
 
         this.popupAddBtn = function (target, rect){
             if(target.id!='addBtn') temp = rect;
-
-            parts.addBtn.render(target, target.attributes, temp);
+            isMoved = target;
+            setTimeout(()=>{
+                if(isMoved == target) parts.addBtn.render(target, target.attributes, temp);
+            }, 200);
         }
 
         this.renderChart = function (gantt) {
@@ -604,6 +1043,7 @@ export const Gantt = (function () {
                     let th = document.createElement('th');
 
                     Object.entries(cols.attr).forEach(([key, val])=>{
+                        if(val != '')
                         th.style[key] = val;
                     });
 
@@ -622,6 +1062,7 @@ export const Gantt = (function () {
                     let td = document.createElement('td');
 
                     Object.entries(cols.attr).forEach(([key, val])=>{
+                        if(val != '')
                         td.style[key] = val;
                     });
 
@@ -649,7 +1090,6 @@ export const Gantt = (function () {
         this.clearTbody = function (){
             tbody.innerHTML = '';
         }
-
     }
 
     return {
@@ -670,12 +1110,43 @@ export const Gantt = (function () {
                 controlList: {
                     render(target, data, {x, y}, isCopied){
                         const {rowid, colid} = target.attributes;
-                        const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/).slice(1)||[0,'rem'];
+                        const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/).slice(1)||[0,'px'];
 
-                        const hex = data.attr.color?.slice(0,7)||'#000000';
+                        const fontWeight = data.attr.fontWeight||'normal';
+
+                        const [width, widthUnit] = data.attr.width?.match(/([0-9.]+)(\w+|\%)/).slice(1)||[target.clientWidth, 'px'];
+                        const [height, heightUnit] = data.attr.height?.match(/([0-9.]+)(\w+|\%)/).slice(1)||[target.clientHeight, 'px'];
+
+                        const [borderWidth, allUnit] = data.attr.borderWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
+                        const borderStyle = data.attr.borderStyle;
+                        const borderColor = data.attr.borderColor||'#e0e0e0';
+
+                        const [borderLeftWidth, leftUnit] = data.attr.borderLeftWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
+                        const borderLeftStyle = data.attr.borderLeftStyle;
+                        const borderLeftColor = data.attr.borderLeftColor||'#e0e0e0';
+                        
+                        const [borderRightWidth, rightUnit] = data.attr.borderRightWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
+                        const borderRightStyle = data.attr.borderRightStyle;
+                        const borderRightColor = data.attr.borderRightColor||'#e0e0e0';
+
+                        const [borderTopWidth, topUnit] = data.attr.borderTopWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
+                        const borderTopStyle = data.attr.borderTopStyle;
+                        const borderTopColor = data.attr.borderTopColor||'#e0e0e0';
+
+                        const [borderBottomWidth, bottomUnit] = data.attr.borderBottomWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
+                        const borderBottomStyle = data.attr.borderBottomStyle;
+                        const borderBottomColor = data.attr.borderBottomColor||'#e0e0e0';
+                        
+                        const hex = data.attr.color?.slice(0,7)||'#e0e0e0';
                         const bgHex = data.attr.backgroundColor?.slice(0,7)||'#ffffff';
                         const opacity = parseFloat(parseInt((data.attr.color?.slice(7, 9)||'ff'), 16).toFixed(2));
                         const bgOpacity = parseFloat(parseInt((data.attr.backgroundColor?.slice(7, 9)||'ff'), 16).toFixed(2));
+
+                        const radio = data.attr.textAlign;
+
+                        if(window.innerWidth < 160 + x){
+                            x = x - 160;
+                        }
 
                         ganttChart.insertAdjacentHTML('beforeend', `
                             <ul
@@ -686,6 +1157,7 @@ export const Gantt = (function () {
                             style="
                                 top: ${y}px;
                                 left: ${x}px;
+                                ${window.innerWidth/2<x?'transform: translateX(-50%)':''}
                             ">
                                 <li class="text-center">
                                     ${isCopied>0?`
@@ -697,21 +1169,265 @@ export const Gantt = (function () {
                                     <button id="clearAttrs" class="btn clear">Clear</button>
                                 </li>
                                 <li class="text-center">
-                                    Color
+                                    <span>Move</span>
                                     <br>
-                                    <input type="color" id="color" class="form-input attrs" value="${hex}">
-                                    <br>
-                                    <input type="range" step="1" min="16" max="255" class="form-input attrs" id="colorOpacity" value="${opacity}">
+                                    <button class="btn move" moving="left" class="btn">&#11164;</button>
+                                    <button class="btn move" moving="top" class="btn clear">&#11165;</button>
+                                    <button class="btn move" moving="bottom" class="btn clear">&#11167;</button>
+                                    <button class="btn move" moving="right" class="btn">&#11166;</button>
                                 </li>
                                 <li class="text-center">
-                                    bgColor
-                                    <br>
-                                    <input type="color" id="backgroundColor" class="form-input attrs" value="${bgHex}">
-                                    <br>
-                                    <input type="range" step="1" min="16" max="255" class="form-input attrs" id="backgroundColorOpacity" value="${bgOpacity}">
+                                    <label for="bRow">To Rows</label>
+                                    <input type="checkbox" class="attrs" id="bRow">
+                                    <label for="bCol">To Cols</label>
+                                    <input type="checkbox" class="attrs" id="bCol">
                                 </li>
                                 <li class="text-center">
-                                    Font size
+                                    <span>Width & Height</span>
+                                    <br>
+                                    <label for="width">Width</label>
+                                    <input type="number" class="form-input attrs" id="width" value="${width}">
+                                    <select id="widthUnit" class="form-input attrs">
+                                        <option${(widthUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                        <option${(widthUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                        <option${(widthUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                        <option${(widthUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                        <option${(widthUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                        <option${(widthUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                        <option${(widthUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                        <option${(widthUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                        <option${(widthUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                        <option${(widthUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                        <option${(widthUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                        <option${(widthUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                        <option${(widthUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                    </select>
+                                    <br>
+                                    <label for="height">Height</label>
+                                    <input type="number" class="form-input attrs" id="height" value="${height}">
+                                    <select id="heightUnit" class="form-input attrs">
+                                        <option${(heightUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                        <option${(heightUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                        <option${(heightUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                        <option${(heightUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                        <option${(heightUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                        <option${(heightUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                        <option${(heightUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                        <option${(heightUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                        <option${(heightUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                        <option${(heightUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                        <option${(heightUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                        <option${(heightUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                        <option${(heightUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                    </select>
+                                </li>
+                                <li class="text-center">
+                                    <span>Border All</span>
+                                    <br>
+                                    <button class="btn" id="bReset">Reset Border</button>
+                                    <br>
+                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${borderWidth}">
+
+                                    <select id="allUnit" class="form-input attrs">
+                                        <option${(allUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                        <option${(allUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                        <option${(allUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                        <option${(allUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                        <option${(allUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                        <option${(allUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                        <option${(allUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                        <option${(allUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                        <option${(allUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                        <option${(allUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                        <option${(allUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                        <option${(allUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                        <option${(allUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                    </select>
+
+                                    <select id="borderStyle" class="form-input attrs" style="width: 70px;">
+                                        <option${(borderStyle||'solid')=='solid'?' selected':''} value="solid">solid</option>
+                                        <option${(borderStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option>
+                                        <option${(borderStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option>
+                                        <option${(borderStyle||'solid')=='double'?' selected':''} value="double">double</option>
+                                        <option${(borderStyle||'solid')=='groove'?' selected':''} value="groove">groove</option>
+                                        <option${(borderStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option>
+                                        <option${(borderStyle||'solid')=='outset'?' selected':''} value="outset">outset</option>
+                                        <option${(borderStyle||'solid')=='none'?' selected':''} value="none">none</option>
+                                        <option${(borderStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option>
+                                    </select>
+                                    <input type="color" id="borderColor" class="form-input attrs" value="${borderColor}">
+                                </li>
+                                <li class="text-center">
+                                    <span>Border</span>
+                                    <br>
+                                    <span class="w-flex flex-column justify-content-center">
+                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
+                                            top
+                                            <input id="borderTopWidth" class="form-input border attrs" border="top" type="number" min="0" style="width: 50px;" value="${borderTopWidth}">
+
+                                            <select id="topUnit" class="form-input attrs">
+                                                <option${(topUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                                <option${(topUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                                <option${(topUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                                <option${(topUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                                <option${(topUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                                <option${(topUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                                <option${(topUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                                <option${(topUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                                <option${(topUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                                <option${(topUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                                <option${(topUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                                <option${(topUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                                <option${(topUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                            </select>
+
+                                            <select id="borderTopStyle" class="form-input attrs" style="width: 70px;">
+                                                <option${(borderTopStyle||'solid')=='solid'?' selected':''} value="solid">solid</option>
+                                                <option${(borderTopStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option>
+                                                <option${(borderTopStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option>
+                                                <option${(borderTopStyle||'solid')=='double'?' selected':''} value="double">double</option>
+                                                <option${(borderTopStyle||'solid')=='groove'?' selected':''} value="groove">groove</option>
+                                                <option${(borderTopStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option>
+                                                <option${(borderTopStyle||'solid')=='outset'?' selected':''} value="outset">outset</option>
+                                                <option${(borderTopStyle||'solid')=='none'?' selected':''} value="none">none</option>
+                                                <option${(borderTopStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option>
+                                            </select>
+                                            <input type="color" id="borderTopColor" class="form-input attrs" value="${borderTopColor}">
+                                        </label>
+                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
+                                            left
+                                            <input id="borderLeftWidth" class="form-input border attrs" border="left" type="number" min="0" style="width: 50px;" value="${borderLeftWidth}">
+
+                                            <select id="leftUnit" class="form-input attrs">
+                                                <option${(leftUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                                <option${(leftUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                                <option${(leftUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                                <option${(leftUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                                <option${(leftUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                                <option${(leftUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                                <option${(leftUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                                <option${(leftUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                                <option${(leftUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                                <option${(leftUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                                <option${(leftUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                                <option${(leftUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                                <option${(leftUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                            </select>
+
+                                            <select id="borderLeftStyle" class="form-input attrs" style="width: 70px;">
+                                                <option${(borderLeftStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
+                                                <option${(borderLeftStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
+                                                <option${(borderLeftStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
+                                                <option${(borderLeftStyle||'solid')=='double'?' selected':''} value="double">double</option$>
+                                                <option${(borderLeftStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
+                                                <option${(borderLeftStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
+                                                <option${(borderLeftStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
+                                                <option${(borderLeftStyle||'solid')=='none'?' selected':''} value="none">none</option$>
+                                                <option${(borderLeftStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                            </select>
+                                            <input type="color" id="borderLeftColor" class="form-input attrs" value="${borderLeftColor}">
+                                        </label>
+                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
+                                            right
+                                            <input id="borderRightWidth" class="form-input border attrs" border="right" type="number" min="0" style="width: 50px;" value="${borderRightWidth}">
+
+                                            <select id="rightUnit" class="form-input attrs">
+                                                <option${(rightUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                                <option${(rightUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                                <option${(rightUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                                <option${(rightUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                                <option${(rightUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                                <option${(rightUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                                <option${(rightUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                                <option${(rightUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                                <option${(rightUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                                <option${(rightUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                                <option${(rightUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                                <option${(rightUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                                <option${(rightUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                            </select>
+
+                                            <select id="borderRightStyle" class="form-input attrs" style="width: 70px;">
+                                                <option${(borderRightStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
+                                                <option${(borderRightStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
+                                                <option${(borderRightStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
+                                                <option${(borderRightStyle||'solid')=='double'?' selected':''} value="double">double</option$>
+                                                <option${(borderRightStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
+                                                <option${(borderRightStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
+                                                <option${(borderRightStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
+                                                <option${(borderRightStyle||'solid')=='none'?' selected':''} value="none">none</option$>
+                                                <option${(borderRightStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                            </select>
+                                            <input type="color" id="borderRightColor" class="form-input attrs" value="${borderRightColor}">
+                                        </label>
+                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
+                                            bottom
+                                            <input id="borderBottomWidth" class="form-input border attrs" border="bottom" type="number" min="0" style="width: 50px;" value="${borderBottomWidth}">
+
+                                            <select id="bottomUnit" class="form-input attrs">
+                                                <option${(bottomUnit||'px')=='px'?' selected':''} value="px">px</option>
+                                                <option${(bottomUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
+                                                <option${(bottomUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
+                                                <option${(bottomUnit||'px')=='in'?' selected':''} value="in">in</option>
+                                                <option${(bottomUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
+                                                <option${(bottomUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
+                                                <option${(bottomUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
+                                                <option${(bottomUnit||'px')=='em'?' selected':''} value="em">em</option>
+                                                <option${(bottomUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
+                                                <option${(bottomUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
+                                                <option${(bottomUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
+                                                <option${(bottomUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
+                                                <option${(bottomUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                            </select>
+
+                                            <select id="borderBottomStyle" class="form-input attrs" style="width: 70px;">
+                                                <option${(borderBottomStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
+                                                <option${(borderBottomStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
+                                                <option${(borderBottomStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
+                                                <option${(borderBottomStyle||'solid')=='double'?' selected':''} value="double">double</option$>
+                                                <option${(borderBottomStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
+                                                <option${(borderBottomStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
+                                                <option${(borderBottomStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
+                                                <option${(borderBottomStyle||'solid')=='none'?' selected':''} value="none">none</option$>
+                                                <option${(borderBottomStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                            </select>
+                                            <input type="color" id="borderBottomColor" class="form-input attrs" value="${borderBottomColor}">
+                                        </label>
+                                    </span>
+                                </li>
+                                <li class="text-center">
+                                    <span>Colors</span>
+                                    <br>
+                                    <span class="w-flex justify-content-center">
+                                        <span>
+                                            font
+                                            <br>
+                                            <input type="color" id="color" class="form-input attrs" value="${hex}">
+                                            <br>
+                                            <input type="range" step="1" min="16" max="255" class="form-input attrs" id="colorOpacity" value="${opacity}">
+                                        </span>
+                                        <span>
+                                            background
+                                            <br>
+                                            <input type="color" id="backgroundColor" class="form-input attrs" value="${bgHex}">
+                                            <br>
+                                            <input type="range" step="1" min="16" max="255" class="form-input attrs" id="backgroundColorOpacity" value="${bgOpacity}">
+                                        </span>
+                                    </span>
+                                </li>
+                                <li class="text-center">
+                                    <span>Font</span>
+                                    <br>
+                                    <span>
+                                        <label for="fontWeight">Bold</label>
+                                        <select id="fontWeight" class="form-input attrs">
+                                            <option${fontWeight=='lighter'?' selected':''} value="lighter">lighter</option>
+                                            <option${fontWeight=='normal'?' selected':''} value="normal">normal</option>
+                                            <option${fontWeight=='bold'?' selected':''} value="bold">bold</option>
+                                            <option${fontWeight=='bolder'?' selected':''} value="bolder">bolder</option>
+                                        </select>
+                                    </span>
+                                    <br>
                                     <input id="fontSize" type="number" value="${number||16}" min="0" class="form-input attrs">
                                     <select id="unit" class="form-input attrs">
                                         <option${(unit||'px')=='px'?' selected':''} value="px">px</option>
@@ -729,6 +1445,24 @@ export const Gantt = (function () {
                                         <option${(unit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
                                     </select>
                                 </li>
+                                <li class="text-center">
+                                    <span>Text align</span>
+                                    <br>
+                                    <span class="w-flex justify-content-center ta">
+                                        <span>
+                                            <label ${radio=='left'?'class="active"':radio==undefined?'class="active"':''} for="al">Left</label>
+                                            <input class="attrs" type="radio" name="align" id="al" value="left" hidden>
+                                        </span>
+                                        <span>
+                                            <label ${radio=='center'?'class="active"':''} for="ac">Center</label>
+                                            <input class="attrs" type="radio" name="align" id="ac" value="center" hidden>
+                                        </span>
+                                        <span>
+                                            <label ${radio=='right'?'class="active"':''} for="ar">Right</label>
+                                            <input class="attrs" type="radio" name="align" id="ar" value="right" hidden>
+                                        </span>
+                                    </span>
+                                </li>
                             </ul>
                         `);
                     }
@@ -743,7 +1477,7 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        top: ${rect.top + target.clientHeight/2}px;
+                        top: ${target.offsetTop + target.clientHeight/2}px;
                         left: ${rect.right}px;
                         transform: translate(-50%, -50%);
                         ">
@@ -756,7 +1490,7 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        top: ${rect.top + rect.height}px;
+                        top: ${target.offsetTop + rect.height}px;
                         left: ${rect.right - (rect.width/2)}px;
                         transform: translate(-50%, -50%);
                         ">
@@ -777,6 +1511,7 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
+                        width: ${rect.width}px;
                         top: ${tableTop}px;
                         left: ${rect.right - target.clientWidth/2}px;
                         transform: translate(-50%, -100%);
@@ -791,7 +1526,8 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        top: ${rect.top + target.clientHeight/2}px;
+                        height: ${rect.height}px;
+                        top: ${target.offsetTop + target.clientHeight/2}px;
                         left: ${tableleft}px;
                         transform: translate(-100%, -50%);
                         ">
