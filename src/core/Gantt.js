@@ -11,15 +11,17 @@ export const Gantt = (function () {
     textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false;
 
         this.init = function (model) {
             models = model;
 
+            window.addEventListener('keyup', this.cancelHotkey);
             window.addEventListener('keydown', this.hotKey);
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
-            window.addEventListener('click', this.selectCell);
+            window.addEventListener('mouseup', this.selectCell);
+            window.addEventListener('mousedown', this.selectReadyCell);
             window.addEventListener('click', this.addInitialRow);
             window.addEventListener('click', this.borderReset);
             window.addEventListener('click', this.movingRowCol);
@@ -42,6 +44,12 @@ export const Gantt = (function () {
             window.addEventListener('keydown', this.inputKey.bind(this));
         }
 
+        this.cancelHotkey = function(ev) {
+            if(ev.key == 'Shift'){
+                shift = false;
+            }
+        }
+
         this.hotKey = function (ev){
             const target = ev.target;
 
@@ -49,19 +57,36 @@ export const Gantt = (function () {
                 models.copyHotKey();
             } else if(ev.key == 'v' && ev.ctrlKey){
                 models.pasteHotKey();
+            } else if(ev.key == 'Escape'){
+                models.clearSelected();
+            } else if(ev.key == 'Shift'){
+                if(!shift) shift = true;
             }
         }
 
         this.selectCell = function (ev){
             const target = ev.target;
-            const closest = target.closest('th,td');
+            const closest = target.closest('th,td,.control-list');
 
             if(!closest) {
                 models.clearSelected();
                 return;
             }
+            if(shift && mousedown) models.selectCell(closest);
+        }
 
-            models.selectCell(closest);
+        this.selectReadyCell = function (ev){
+            const target = ev.target;
+            const closest = target.closest('th,td,.control-list');
+
+            if(!closest) {
+                models.clearSelected();
+                return;
+            }
+            if(shift) {
+                mousedown = true;
+                models.selectReadyCell(closest);
+            }
         }
 
         this.addInitialRow = function (ev){
@@ -166,6 +191,19 @@ export const Gantt = (function () {
             const target = ev.target;
             const closest = target.closest('.control-list');
             
+            if(!closest) {
+                document.querySelectorAll('th.active, td.active').forEach(el=>{
+                    if(el!=closest){
+                        el.classList.remove('active');
+                        if(el.querySelector('textarea')){
+                            models.autoValueChange(el.querySelector('textarea'));
+                            el.innerHTML = textEdit.taToHTML(el.querySelector('textarea').value);
+                        }
+                        toggler = false;
+                    }
+                });
+            }
+
             if(!closest) document.querySelectorAll('.control-list').forEach(el=>el.remove());
         }
 
@@ -356,7 +394,7 @@ export const Gantt = (function () {
                 return;
             }
             
-            models.popupAddBtn(target);
+            if(!shift) models.popupAddBtn(target);
         }
     }
 
@@ -400,6 +438,7 @@ export const Gantt = (function () {
             this.clearCopiedAttrs();
 
             let copyTarget = selected[0];
+            console.log(copyTarget)
             const type = copyTarget.el.tagName;
             const {rowid, colid} = copyTarget.el.attributes;
             const ganttType = type=='TH'?'head':'body';
@@ -441,13 +480,68 @@ export const Gantt = (function () {
         }
 
         this.selectCell = function (closest){
-            let found = this.findGantt(closest.tagName, closest.attributes);
+            // let end = this.findGantt(closest.tagName, closest.attributes);
+            let start = selected.pop();
+            const endName = closest.tagName;
+            const startName = start.el.tagName;
+            const {rowid:endRowid, colid:endColid} = closest.attributes;
+            const {rowid:startRowid, colid:startColid} = start.el.attributes;
 
-            selected = selected.filter(el=>el.el!=closest);
-            selected.push({el:closest, obj:found});
+            const [startRowId, startColId, endRowId, endColId] = [parseInt(startRowid.value), parseInt(startColid.value), parseInt(endRowid.value), parseInt(endColid.value)];
+
+            let RowMax = Math.max(startRowId, endRowId);
+            let RowMin = Math.min(startRowId, endRowId);
+            let ColMax = Math.max(startColId, endColId);
+            let ColMin = Math.min(startColId, endColId);
+            let temp = [];
+
+            if(startName == endName)
+            for (let i = RowMin; i <= RowMax; i++) {
+                for (let q = ColMin; q <= ColMax; q++) {
+                    let sameRange = document.querySelector(`${startName}[rowid="${i}"][colid="${q}"]`);
+                    temp.push(sameRange);
+                }
+            }
+            else{
+                if(startName == 'TH' || endName == 'TH')
+                for (let i = startName=='TH'?startRowId:endRowId; i <= gantt.head.length-1; i++) {
+                    for (let q = ColMin; q <= ColMax; q++) {
+                        let headRange = document.querySelector(`${startName=='TH'?startName:endName}[rowid="${i}"][colid="${q}"]`);
+                        temp.push(headRange);
+                    }
+                }
+
+                if(endName == 'TD' || startName == 'TD')
+                {
+                    for (let i = 0; i <= (endName=='TD'?endRowId:startRowId); i++) {
+                        for (let q = ColMin; q <= ColMax; q++) {
+                            let sameRange = document.querySelector(`${endName=='TD'?endName:startName}[rowid="${i}"][colid="${q}"]`);
+                            temp.push(sameRange);
+                        }
+                    }
+                }
+            }
+
+            [...temp].forEach(el=>{
+                let {rowid, colid} = el.attributes;
+                let [row, col] = [parseInt(rowid.value), parseInt(colid.value)];
+                selected.push({el: el, obj:this.findGantt(el.tagName, el.attributes), rowid: row, colid: col})
+            });
+            
+            let idx = selected.findIndex(els=>els.el == start.el);
+
+            selected.splice(0, 0, selected.splice(idx, 1).pop());
+            
             selected.forEach(el=>{
                 el.el.classList.add('selected');
             });
+        }
+
+        this.selectReadyCell = function (closest){
+            let found = this.findGantt(closest.tagName, closest.attributes);
+            let {rowid, colid} = closest.attributes;
+            let [row, col] = [parseInt(rowid.value), parseInt(colid.value)];
+            selected.push({el:closest, obj:found, rowid: row, colid: col});
         }
 
         this.addHistory = function (){
@@ -665,10 +759,46 @@ export const Gantt = (function () {
         }
 
         this.autoAttrsValueChange = function (target){
+            if(selected.length>0)
+            selected.forEach(sel=>{
+                this.autoAttrsApply(target, sel);
+            });
+            else this.autoAttrsApply(target);
+            
+            this.addHistory();
+            this.setStorage(gantt);
+            views.renderChart(gantt);
+        }
+
+        this.autoAttrsApply = function(target, selects){
             const closest = target.closest('ul.control-list');
             const type = closest.getAttribute('type');
             const ganttType = type=='TH'?'head':'body';
             const {rowid, colid} = closest.attributes;
+            const selType = selects?(selects.el.tagName=='TH'?'head':'body'):null;
+            const {el, rowid: selRow, colid: selCol, obj} = selects||{el:null, rowid:null, colid:null, obj:null};
+
+            const applyRowCol = (id, value) => {
+                if(closest.querySelector('#bRow').checked){
+                    if(selects)
+                    gantt[selType][selRow].map(col=>{
+                        col.attr[id] = value;
+                    });
+                    gantt[ganttType][rowid.value].map(col=>{
+                        col.attr[id] = value;
+                    });
+                }
+
+                if(closest.querySelector('#bCol').checked){
+                    if(selects)
+                    gantt[selType].map(row=>{
+                        return row[selCol].attr[id] = value;
+                    });
+                    gantt[ganttType].map(row=>{
+                        return row[colid.value].attr[id] = value;
+                    });
+                }
+            }
 
             let autoValue = [...document.querySelectorAll(`#${target.id}`)].reduce((pre, cur)=>{
                 let value;
@@ -684,33 +814,16 @@ export const Gantt = (function () {
             switch(target.id){
                 case 'al': case 'ac': case 'ar':
                     let align = document.querySelector('[name="align"]:checked').value;
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['textAlign'] = align;
-                        });
-                    }
+                    applyRowCol('textAlign', align);
 
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row[colid.value].attr['textAlign'] = align;
-                        });
-                    }
-
+                    if(selects)
+                    gantt[selType][selRow][selCol].attr['textAlign'] = align;
+                    else
                     gantt[ganttType][rowid.value][colid.value].attr['textAlign'] = align;
                     break;
 
                 case 'borderWidth': case 'borderStyle': case 'borderColor':
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = autoValue;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row[colid.value].attr[target.id] = autoValue;
-                        });
-                    }
+                    applyRowCol(target.id, autoValue);
 
                     gantt[ganttType].map(row=>{
                         return row.map(col=>{
@@ -721,26 +834,13 @@ export const Gantt = (function () {
                     break;
 
                 default :
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = autoValue;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row[colid.value].attr[target.id] = autoValue;
-                        });
-                    }
-
+                    applyRowCol(target.id, autoValue);
+                    if(selects)
+                    gantt[selType][selRow][selCol].attr[target.id] = autoValue;
                     gantt[ganttType][rowid.value][colid.value].attr[target.id] = autoValue;
                     break;
             }
-
-            this.addHistory();
-            this.setStorage(gantt);
-            views.renderChart(gantt);
-        }
+        };
 
         this.popupControlList = function (closest, ev){
             const {rowid, colid} = closest.attributes;
@@ -857,6 +957,11 @@ export const Gantt = (function () {
         }
 
         this.delBodyRow = function(rowid){
+            if(selected.length>0){
+
+            } else {
+
+            }
             rowid = parseInt(rowid);
             gantt.body.splice(rowid, 1);
         }
