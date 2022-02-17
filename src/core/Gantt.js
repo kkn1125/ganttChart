@@ -16,8 +16,10 @@ export const Gantt = (function () {
         this.init = function (model) {
             models = model;
 
+            window.addEventListener('keydown', this.hotKey);
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
+            window.addEventListener('click', this.selectCell);
             window.addEventListener('click', this.addInitialRow);
             window.addEventListener('click', this.borderReset);
             window.addEventListener('click', this.movingRowCol);
@@ -30,7 +32,7 @@ export const Gantt = (function () {
             window.addEventListener('click', this.exportResult);
             window.addEventListener('click', this.deleteRowCol);
             window.addEventListener('click', this.addRowCol);
-            window.addEventListener('click', this.toggleInput);
+            window.addEventListener('dblclick', this.toggleInput);
             window.addEventListener('click', this.closePopupControlList);
             window.addEventListener('mouseover', this.popupDeleteBtn);
             window.addEventListener('mouseover', this.popupAddBtn);
@@ -38,6 +40,28 @@ export const Gantt = (function () {
             window.addEventListener('change', this.autoValueChange);
             window.addEventListener('input', this.autoAttrsValueChange);
             window.addEventListener('keydown', this.inputKey.bind(this));
+        }
+
+        this.hotKey = function (ev){
+            const target = ev.target;
+
+            if(ev.key == 'c' && ev.ctrlKey){
+                models.copyHotKey();
+            } else if(ev.key == 'v' && ev.ctrlKey){
+                models.pasteHotKey();
+            }
+        }
+
+        this.selectCell = function (ev){
+            const target = ev.target;
+            const closest = target.closest('th,td');
+
+            if(!closest) {
+                models.clearSelected();
+                return;
+            }
+
+            models.selectCell(closest);
         }
 
         this.addInitialRow = function (ev){
@@ -141,7 +165,7 @@ export const Gantt = (function () {
         this.closePopupControlList = function(ev){
             const target = ev.target;
             const closest = target.closest('.control-list');
-
+            
             if(!closest) document.querySelectorAll('.control-list').forEach(el=>el.remove());
         }
 
@@ -360,6 +384,7 @@ export const Gantt = (function () {
         };
         let history = [];
         let hisIndex = 0;
+        let selected = [];
 
         this.init = function (view) {
             views = view;
@@ -369,6 +394,60 @@ export const Gantt = (function () {
             this.addHistory();
 
             this.renderChart();
+        }
+
+        this.copyHotKey = function (){
+            this.clearCopiedAttrs();
+
+            let copyTarget = selected[0];
+            const type = copyTarget.el.tagName;
+            const {rowid, colid} = copyTarget.el.attributes;
+            const ganttType = type=='TH'?'head':'body';
+
+            copiedContents.text = gantt[ganttType][rowid.value][colid.value].text;
+            Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
+        }
+
+        this.pasteHotKey = function (){
+            this.addHistory();
+
+            selected.forEach(sel=>{
+                const copyTarget = sel.el;
+                const type = copyTarget.tagName;
+                const {rowid, colid} = copyTarget.attributes;
+                const ganttType = type=='TH'?'head':'body';
+                
+                copyTarget.innerHTML = copiedContents.text;
+                
+                gantt[ganttType][rowid.value][colid.value].text = copiedContents.text;
+
+                Object.entries(copiedAttrs).forEach(([key, val])=>{
+                    copyTarget.style[key] = val;
+                    gantt[ganttType][rowid.value][colid.value].attr[key] = val;
+                });
+            });
+
+            this.clearSelected();
+            this.renderChart();
+        }
+
+        this.findGantt = function (ganttType, {rowid, colid}){
+            return gantt[ganttType=='TH'?'head':'body'][rowid.value][colid.value];
+        }
+
+        this.clearSelected = function(){
+            selected = [];
+            document.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected'));
+        }
+
+        this.selectCell = function (closest){
+            let found = this.findGantt(closest.tagName, closest.attributes);
+
+            selected = selected.filter(el=>el.el!=closest);
+            selected.push({el:closest, obj:found});
+            selected.forEach(el=>{
+                el.el.classList.add('selected');
+            });
         }
 
         this.addHistory = function (){
@@ -554,7 +633,6 @@ export const Gantt = (function () {
 
         this.emptyCopiedAttrs = function (target, controlList){
             views.clearControlList();
-            this.renderChart();
             this.clearCopiedAttrs();
         }
 
@@ -584,8 +662,6 @@ export const Gantt = (function () {
             Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
 
             views.clearControlList();
-
-            this.renderChart();
         }
 
         this.autoAttrsValueChange = function (target){
@@ -688,6 +764,7 @@ export const Gantt = (function () {
                 return row.map(col=>{
                     delete col.attr['[object HTMLInputElement]'];
                     delete col.attr['allUnit'];
+                    delete col['select'];
                     return;
                 });
             });
@@ -696,6 +773,7 @@ export const Gantt = (function () {
                 return row.map(col=>{
                     delete col.attr['[object HTMLInputElement]'];
                     delete col.attr['allUnit'];
+                    delete col['select'];
                     return;
                 });
             });
@@ -975,7 +1053,7 @@ export const Gantt = (function () {
                     let td = document.createElement('td');
 
                     Object.entries(cols.attr).forEach(([key, val])=>{
-                        if(val != '')
+                        if(val != '' && val != undefined)
                         td.style[key] = val;
                     });
 
@@ -1021,42 +1099,84 @@ export const Gantt = (function () {
                     }
                 },
                 controlList: {
+                    verticalAligns: ['top', 'bottom', 'middle', 'baseline', 'revert', 'unset', 'initail', 'inherit'],
+                    styles: ['solid', 'dotted', 'dashed', 'groove', 'ridge', 'double', 'outset', 'hidden', 'none'],
+                    units: ['auto', 'px', 'cm', 'mm', 'in', 'pc', 'pt', 'ch', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax'],
+                    getLastName(str){
+                        if(str=='backgroundColor') return 'bgColor';
+                        return str.match(/\p{Lu}\p{Ll}+/gu)?.pop()||str.charAt(0).toUpperCase()+str.slice(1);
+                    },
+                    getOpacity(id, data) {
+                        return data.attr[id]?.slice(7, 9)||'ff';
+                    },
+                    hexToNumber(id, data) {
+                        return parseFloat(parseInt((this.getOpacity(id, data)), 16).toFixed(2));
+                    },
+                    getColor(id, data) {
+                        let autoDefault = 0;
+                        if(id.match(/border/g)) autoDefault = '#e0e0e0';
+                        else if(id.match(/font/g)) autoDefault = '#000000';
+                        else if(id.match(/background/g)) autoDefault = '#ffffff';
+                        return data.attr[id]?.slice(0, 7)||'#e0e0e0';
+                    },
+                    setNumberUnitList(unitName) {
+                        return [...this.units].map(numberUnit => `<option${(unitName||'auto')==numberUnit?' selected':''} value="${numberUnit=='auto'?'':numberUnit}">${numberUnit}</option>`).join('');
+                    },
+                    setOptionList (style) {
+                        return [...this.verticalAligns].map(st => `<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('')
+                    },
+                    setBorderStyleList (style) {
+                        return [...this.styles].map(st => `<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('')
+                    },
+                    getUnit(id, data) {
+                        return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).pop()||'px'
+                    },
+                    getNumber(id, data, target) {
+                        let autoDefault = 0;
+                        if(id.match(/border/g)) autoDefault = 1;
+                        else if(id.match(/font/g)) autoDefault = 16;
+                        else if(id.match(/font/g)) autoDefault = 16;
+                        else if(id.match(/width/g)) autoDefault = target.clientWidth;
+                        return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).shift()||autoDefault;
+                    },
+                    getStyle(id, data) {
+                        return data.attr[id];
+                    },
+                    getOption(id, data) {
+                        return data.attr[id];
+                    },
+                    colorPannel(id, data) {
+                        return `<span class="w-flex flex-column justify-content-bottom gap-1">
+                            <label for="${id}">${this.getLastName(id)}</label>
+                            <span class="w-flex flex-column justify-content-end">
+                            <input type="color" id="${id}" class="form-input attrs" value="${this.getColor(id, data)}">
+                            <input type="range" step="1" min="0" max="255" class="form-input attrs p-0" id="${id}" value="${this.hexToNumber(id, data)}">
+                        </span></span>`;
+                    },
+                    widthPannel(id, data, target){
+                        return `<span class="w-flex flex-column justify-content-bottom gap-1">
+                            <label for="${id}">${this.getLastName(id)}</label>
+                            <span>
+                                <input type="number" class="form-input attrs" id="${id}" value="${this.getNumber(id, data, target)}" style="width: 70px;">
+                                <select id="${id}" class="form-input attrs" style="width: 75px;">
+                                    ${this.setNumberUnitList(this.getUnit(id, data))}
+                                </select>
+                            </span>
+                        </span>`;
+                    },
+                    stylePannel(id, data){
+                        return `<span class="w-flex align-items-center">
+                        <select id="${id}" class="form-input attrs" style="width: 70px;">
+                        ${this.setBorderStyleList(this.getStyle(id, data))}
+                    </select></span>`;
+                    },
+                    optionPannel(id, data){
+                        return `<span class="w-flex align-items-center">
+                        <select id="${id}" class="form-input attrs" style="width: 70px;">
+                        ${this.setOptionList(this.getOption(id, data))}
+                    </select></span>`;
+                    },
                     render(target, data, {x, y}, isCopied, isContentsCopied){
-                        const styles = ['solid', 'dotted', 'dashed', 'groove', 'ridge', 'double', 'outset', 'hidden', 'none'];
-                        const units = ['auto', 'px', 'cm', 'mm', 'in', 'pc', 'pt', 'ch', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax'];
-
-                        const setBorderStyleList = (style) => [...styles].map(st => `<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('');
-
-                        const setNumberUnitList = (unitName) => [...units].map(numberUnit => `<option${(unitName||'auto')==numberUnit?' selected':''} value="${numberUnit=='auto'?'':numberUnit}">${numberUnit}</option>`).join('');
-
-                        const getNumber = function (id){
-                            let autoDefault = 0;
-                            if(id.match(/border/g)) autoDefault = 1;
-                            else if(id.match(/font/g)) autoDefault = 16;
-                            else if(id.match(/font/g)) autoDefault = 16;
-                            else if(id.match(/width/g)) autoDefault = target.clientWidth;
-                            return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).shift()||autoDefault;
-                        }
-                        
-                        const getUnit = function (id){
-                            return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).pop()||'px';
-                        }
-
-                        const getOpacity = (id) => data.attr[id]?.slice(7, 9)||'ff';
-                        const hexToNumber = (id) => parseFloat(parseInt((getOpacity(id)), 16).toFixed(2));
-                        
-                        const getColor = (id) => {
-                            let autoDefault = 0;
-                            if(id.match(/border/g)) autoDefault = '#e0e0e0';
-                            else if(id.match(/font/g)) autoDefault = '#000000';
-                            else if(id.match(/background/g)) autoDefault = '#ffffff';
-                            return data.attr[id]?.slice(0, 7)||'#e0e0e0';
-                        };
-
-                        const getStyle = (id) => {
-                            return data.attr[id];
-                        };
-                        
                         const {rowid, colid} = target.attributes;
 
                         const fontWeight = data.attr.fontWeight||'normal';
@@ -1079,170 +1199,133 @@ export const Gantt = (function () {
                                 left: ${x}px;
                                 ${window.innerWidth/2<x?'transform: translateX(-50%)':''}
                             ">
-                                <li class="text-center">
+                                <li>
                                     <span>Contents Copy</span>
-                                    <br>
-                                    ${isContentsCopied?`
-                                        <button id="pasteContents" class="btn">Paste</button>
-                                    `:`
-                                        <button id="pasteContents" class="btn" disabled>Pates</button>
-                                    `}
-                                    <button id="copyContents" class="btn">Copy</button>
-                                    <button id="clearContents" class="btn clear">Clear</button>
+                                    <span class="tool-bundle">
+                                        ${isContentsCopied?`
+                                            <button id="pasteContents" class="btn">Paste</button>
+                                        `:`
+                                            <button id="pasteContents" class="btn" disabled>Pates</button>
+                                        `}
+                                        <button id="copyContents" class="btn">Copy</button>
+                                        <button id="clearContents" class="btn clear">Clear</button>
+                                    </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Attrs Copy</span>
-                                    <br>
-                                    ${isCopied>0?`
-                                        <button id="pasteAttrs" class="btn">Paste</button>
-                                    `:`
-                                        <button id="pasteAttrs" class="btn" disabled>Pates</button>
-                                    `}
-                                    <button id="copyAttrs" class="btn">Copy</button>
-                                    <button id="clearAttrs" class="btn clear">Clear</button>
+                                    <span class="tool-bundle">
+                                        ${isCopied>0?`
+                                            <button id="pasteAttrs" class="btn">Paste</button>
+                                        `:`
+                                            <button id="pasteAttrs" class="btn" disabled>Pates</button>
+                                        `}
+                                        <button id="copyAttrs" class="btn">Copy</button>
+                                        <button id="clearAttrs" class="btn clear">Clear</button>
+                                    </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Move</span>
-                                    <br>
-                                    <button class="btn move" moving="left" class="btn">&#11164;</button>
-                                    <button class="btn move" moving="top" class="btn clear">&#11165;</button>
-                                    <button class="btn move" moving="bottom" class="btn clear">&#11167;</button>
-                                    <button class="btn move" moving="right" class="btn">&#11166;</button>
+                                    <span class="tool-bundle">
+                                        <button class="btn move" moving="left" class="btn">👈</button>
+                                        <button class="btn move" moving="top" class="btn">👆</button>
+                                        <button class="btn move" moving="bottom" class="btn">👇</button>
+                                        <button class="btn move" moving="right" class="btn">👉</button>
+                                    </span>
                                 </li>
-                                <li class="text-center">
-                                    <label for="bRow">To Rows</label>
-                                    <input type="checkbox" class="attrs" id="bRow">
-                                    <label for="bCol">To Cols</label>
-                                    <input type="checkbox" class="attrs" id="bCol">
+                                <li>
+                                    <span>Apply To</span>
+                                    <span class="tool-bundle">
+                                        <label for="bRow">Rows</label>
+                                        <input type="checkbox" class="" id="bRow">
+                                        <label for="bCol">Cols</label>
+                                        <input type="checkbox" class="" id="bCol">
+                                    </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Width & Height</span>
-                                    <br>
-                                    <label for="width">Width</label>
-                                    <input type="number" class="form-input attrs" id="width" value="${getNumber('width')}">
-                                    <select id="width" class="form-input attrs">
-                                        ${setNumberUnitList(getUnit('width'))}
-                                    </select>
-                                    <br>
-                                    <label for="height">Height</label>
-                                    <input type="number" class="form-input attrs" id="height" value="${getNumber('height')}">
-                                    <select id="height" class="form-input attrs">
-                                        ${setNumberUnitList(getUnit('height'))}
-                                    </select>
+                                    <span class="tool-bundle">
+                                        ${this.widthPannel('width', data, target)}
+                                        ${this.widthPannel('height', data, target)}
+                                    </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
+                                    <span>Padding All</span>
+                                    <br>
+                                    ${this.widthPannel('padding', data, target)}
+                                </li>
+                                <li>
+                                    <span>Padding</span>
+                                    <span class="tool-bundle-col">
+                                        ${this.widthPannel('paddingTop', data, target)}
+                                        ${this.widthPannel('paddingLeft', data, target)}
+                                        ${this.widthPannel('paddingRight', data, target)}
+                                        ${this.widthPannel('paddingBottom', data, target)}
+                                    </span>
+                                </li>
+                                <li>
                                     <span>Border All</span>
                                     <br>
                                     <button class="btn" id="bReset">Reset Border</button>
-                                    <br>
-                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${getNumber('borderWidth')}">
-
-                                    <select id="borderWidth" class="form-input attrs">
-                                        ${setNumberUnitList(getUnit('borderWidth'))}
-                                    </select>
-
-                                    <select id="borderStyle" class="form-input attrs" style="width: 70px;">
-                                        ${setBorderStyleList(getStyle('borderStyle'))}
-                                    </select>
-                                    <input type="color" id="borderColor" class="form-input attrs" value="${getColor('borderColor')}">
+                                    <span class="tool-bundle">
+                                        ${this.widthPannel('borderWidth', data, target)}
+                                        ${this.stylePannel('borderStyle', data)}
+                                        ${this.colorPannel('borderColor', data)}
+                                    </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Border</span>
                                     <br>
-                                    <span class="w-flex flex-column justify-content-center">
-                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
-                                            top
-                                            <input id="borderTopWidth" class="form-input border attrs" border="top" type="number" min="0" style="width: 50px;" value="${getNumber('borderTopWidth')}">
-
-                                            <select id="borderTopWidth" class="form-input attrs">
-                                                ${setNumberUnitList(getUnit('borderTopWidth'))}
-                                            </select>
-
-                                            <select id="borderTopStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyleList(getStyle('borderTopStyle'))}
-                                            </select>
-                                            <input type="color" id="borderTopColor" class="form-input attrs" value="${getColor('borderTopColor')}">
-                                        </label>
-                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
-                                            left
-                                            <input id="borderLeftWidth" class="form-input border attrs" border="left" type="number" min="0" style="width: 50px;" value="${getNumber('borderLeftWidth')}">
-
-                                            <select id="borderLeftWidth" class="form-input attrs">
-                                                ${setNumberUnitList(getUnit('borderLeftWidth'))}
-                                            </select>
-
-                                            <select id="borderLeftStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyleList(getStyle('borderLeftStyle'))}
-                                            </select>
-                                            <input type="color" id="borderLeftColor" class="form-input attrs" value="${getColor('borderLeftColor')}">
-                                        </label>
-                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
-                                            right
-                                            <input id="borderRightWidth" class="form-input border attrs" border="right" type="number" min="0" style="width: 50px;" value="${getNumber('borderRightWidth')}">
-
-                                            <select id="borderRightWidth" class="form-input attrs">
-                                                ${setNumberUnitList(getUnit('borderRightWidth'))}
-                                            </select>
-
-                                            <select id="borderRightStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyleList(getStyle('borderRightStyle'))}
-                                            </select>
-                                            <input type="color" id="borderRightColor" class="form-input attrs" value="${getColor('borderRightColor')}">
-                                        </label>
-                                        <label class="w-flex justify-content-center" style="gap:.3rem;">
-                                            bottom
-                                            <input id="borderBottomWidth" class="form-input border attrs" border="bottom" type="number" min="0" style="width: 50px;" value="${getNumber('borderBottomWidth')}">
-
-                                            <select id="borderBottomWidth" class="form-input attrs">
-                                                ${setNumberUnitList(getUnit('borderBottomWidth'))}
-                                            </select>
-
-                                            <select id="borderBottomStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyleList(getStyle('borderBottomStyle'))}
-                                            </select>
-                                            <input type="color" id="borderBottomColor" class="form-input attrs" value="${getColor('borderBottomColor')}">
-                                        </label>
+                                    <span class="w-flex flex-column justify-content-center gap-1">
+                                        <span class="tool-bundle">
+                                            ${this.widthPannel('borderTopWidth', data, target)}
+                                            ${this.stylePannel('borderTopStyle', data)}
+                                            ${this.colorPannel('borderTopColor', data)}
+                                        </span>
+                                        <span class="tool-bundle">
+                                            ${this.widthPannel('borderLeftWidth', data, target)}
+                                            ${this.stylePannel('borderLeftStyle', data)}
+                                            ${this.colorPannel('borderLeftColor', data)}
+                                        </span>
+                                        <span class="tool-bundle">
+                                            ${this.widthPannel('borderRightWidth', data, target)}
+                                            ${this.stylePannel('borderRightStyle', data)}
+                                            ${this.colorPannel('borderRightColor', data)}
+                                        </span>
+                                        <span class="tool-bundle">
+                                            ${this.widthPannel('borderBottomWidth', data, target)}
+                                            ${this.stylePannel('borderBottomStyle', data)}
+                                            ${this.colorPannel('borderBottomColor', data)}
+                                        </span>
                                     </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Colors</span>
                                     <br>
-                                    <span class="w-flex justify-content-center">
-                                        <span>
-                                            font
-                                            <br>
-                                            <input type="color" id="color" class="form-input attrs" value="${getColor('color')}">
-                                            <br>
-                                            <input type="range" step="1" min="0" max="255" class="form-input attrs" id="color" value="${hexToNumber('color')}">
-                                        </span>
-                                        <span>
-                                            background
-                                            <br>
-                                            <input type="color" id="backgroundColor" class="form-input attrs" value="${getColor('backgroundColor')}">
-                                            <br>
-                                            <input type="range" step="1" min="0" max="255" class="form-input attrs" id="backgroundColor" value="${hexToNumber('backgroundColor')}">
+                                    <span class="w-flex justify-content-center" style="gap:.3rem;">
+                                        <span class="tool-bundle">
+                                            ${this.colorPannel('color', data)}
+                                            ${this.colorPannel('backgroundColor', data)}
                                         </span>
                                     </span>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Font</span>
                                     <br>
-                                    <span>
-                                        <label for="fontWeight">Bold</label>
-                                        <select id="fontWeight" class="form-input attrs">
-                                            <option${fontWeight=='lighter'?' selected':''} value="lighter">lighter</option>
-                                            <option${fontWeight=='normal'?' selected':''} value="normal">normal</option>
-                                            <option${fontWeight=='bold'?' selected':''} value="bold">bold</option>
-                                            <option${fontWeight=='bolder'?' selected':''} value="bolder">bolder</option>
-                                        </select>
+                                    <span class="w-flex justify-content-center" style="gap:.3rem;">
+                                        <span>
+                                            <label for="fontWeight">Bold</label>
+                                            <br>
+                                            <select id="fontWeight" class="form-input attrs">
+                                                <option${fontWeight=='lighter'?' selected':''} value="lighter">lighter</option>
+                                                <option${fontWeight=='normal'?' selected':''} value="normal">normal</option>
+                                                <option${fontWeight=='bold'?' selected':''} value="bold">bold</option>
+                                                <option${fontWeight=='bolder'?' selected':''} value="bolder">bolder</option>
+                                            </select>
+                                        </span>
+                                        ${this.widthPannel('fontSize', data, target)}
                                     </span>
-                                    <br>
-                                    <input id="fontSize" type="number" value="${getNumber('fontSize')}" min="0" class="form-input attrs">
-                                    <select id="fontSize" class="form-input attrs">
-                                        ${setNumberUnitList(getUnit('fontSize'))}
-                                    </select>
                                 </li>
-                                <li class="text-center">
+                                <li>
                                     <span>Text align</span>
                                     <br>
                                     <span class="w-flex justify-content-center ta">
@@ -1258,6 +1341,13 @@ export const Gantt = (function () {
                                             <label ${radio=='right'?'class="active"':''} for="ar">Right</label>
                                             <input class="attrs" type="radio" name="align" id="ar" value="right" hidden>
                                         </span>
+                                    </span>
+                                </li>
+                                <li>
+                                    <span>Vertical align</span>
+                                    <br>
+                                    <span class="w-flex justify-content-center ta">
+                                        ${this.optionPannel('verticalAlign', data)}
                                     </span>
                                 </li>
                             </ul>
