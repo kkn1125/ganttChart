@@ -24,7 +24,7 @@ export const Gantt = (function () {
             window.addEventListener('contextmenu', this.popupControlList);
             window.addEventListener('change', this.autoValueChange);
             window.addEventListener('input', this.autoAttrsValueChange);
-            window.addEventListener('keydown', this.inputKey);
+            window.addEventListener('keydown', this.inputKey.bind(this));
         }
 
         this.workUndo = function (ev){
@@ -134,35 +134,37 @@ export const Gantt = (function () {
             models.autoValueChange(target);
         }
 
+        this.saveContent = function (target, parent){
+            parent.classList.remove('active');
+            target.blur();
+            parent.innerHTML = target.value.replace(/[\n]/gm, '<br>');
+            save = null;
+            saveContent = null;
+            toggler = false;
+        }
+
+        this.cancelContent = function (parent){
+            blockAutoChange = true;
+            parent.classList.remove('active');
+            parent.innerHTML = saveContent;
+            save = null;
+            saveContent = null;
+            toggler = false;
+        }
+
         this.inputKey = function (ev){
             const target = ev.target;
 
             if(target.tagName != 'TEXTAREA') return;
 
             const parent = target.closest('th,td');
-
             if(toggler){
                 if(ev.key == 'Escape'){
-                    blockAutoChange = true;
-                    parent.classList.remove('active');
-                    parent.innerHTML = saveContent;
-                    save = null;
-                    saveContent = null;
-                    toggler = false;
+                    this.cancelContent(parent);
                 } else if(ev.ctrlKey && ev.key == 'Enter'){
-                    parent.classList.remove('active');
-                    target.blur();
-                    parent.innerHTML = target.value.replace(/[\n]/gm, '<br>');
-                    save = null;
-                    saveContent = null;
-                    toggler = false;
+                    this.saveContent(target, parent);
                 } else if(ev.key == 'Tab'){
-                    parent.classList.remove('active');
-                    target.blur();
-                    parent.innerHTML = target.value.replace(/[\n]/gm, '<br>');
-                    save = null;
-                    saveContent = null;
-                    toggler = false;
+                    this.saveContent(target, parent);
 
                     let {rowid, colid} = parent.attributes;
                     let getTHTD;
@@ -185,7 +187,6 @@ export const Gantt = (function () {
                         }
                     }
 
-                    console.log(getTHTD)
                     getTHTD.click();
                     getTHTD.querySelector('textarea').focus();
                     setTimeout(() => {
@@ -376,64 +377,23 @@ export const Gantt = (function () {
         }
 
         this.borderReset = function (target, controlList){
+            const typeList = ['borderWidth', 'borderTopWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRightWidth', 'borderColor', 'borderTopColor', 'borderBottomColor', 'borderLeftColor', 'borderRightColor', 'borderStyle', 'borderTopStyle', 'borderBottomStyle', 'borderLeftStyle', 'borderRightStyle'];
             this.addHistory();
 
             document.querySelectorAll('td,th').forEach(el=>{
-                el.style['borderWidth'] = '';
-                el.style['borderTopWidth'] = '';
-                el.style['borderBottomWidth'] = '';
-                el.style['borderLeftWidth'] = '';
-                el.style['borderRightWidth'] = '';
-                el.style['borderColor'] = '';
-                el.style['borderTopColor'] = '';
-                el.style['borderBottomColor'] = '';
-                el.style['borderLeftColor'] = '';
-                el.style['borderRightColor'] = '';
-                el.style['borderStyle'] = '';
-                el.style['borderTopStyle'] = '';
-                el.style['borderBottomStyle'] = '';
-                el.style['borderLeftStyle'] = '';
-                el.style['borderRightStyle'] = '';
+                typeList.forEach(type=>el.style[type] = '');
             });
 
             gantt.head = gantt.head.map(row=>{
                 return row.map(col=>{
-                    delete col.attr['borderWidth'];
-                    delete col.attr['borderTopWidth'];
-                    delete col.attr['borderBottomWidth'];
-                    delete col.attr['borderLeftWidth'];
-                    delete col.attr['borderRightWidth'];
-                    delete col.attr['borderColor'];
-                    delete col.attr['borderTopColor'];
-                    delete col.attr['borderBottomColor'];
-                    delete col.attr['borderLeftColor'];
-                    delete col.attr['borderRightColor'];
-                    delete col.attr['borderStyle'];
-                    delete col.attr['borderTopStyle'];
-                    delete col.attr['borderBottomStyle'];
-                    delete col.attr['borderLeftStyle'];
-                    delete col.attr['borderRightStyle'];
+                    typeList.forEach(type=>delete col.attr[type]);
                     return col;
                 });
             });
 
             gantt.body = gantt.body.map(row=>{
                 return row.map(col=>{
-                    delete col.attr['borderWidth'];
-                    delete col.attr['borderTopWidth'];
-                    delete col.attr['borderBottomWidth'];
-                    delete col.attr['borderLeftWidth'];
-                    delete col.attr['borderRightWidth'];
-                    delete col.attr['borderColor'];
-                    delete col.attr['borderTopColor'];
-                    delete col.attr['borderBottomColor'];
-                    delete col.attr['borderLeftColor'];
-                    delete col.attr['borderRightColor'];
-                    delete col.attr['borderStyle'];
-                    delete col.attr['borderTopStyle'];
-                    delete col.attr['borderBottomStyle'];
-                    delete col.attr['borderLeftStyle'];
-                    delete col.attr['borderRightStyle'];
+                    typeList.forEach(type=>delete col.attr[type]);
                     return col;
                 });
             });
@@ -581,10 +541,11 @@ export const Gantt = (function () {
                     parent = target.parentNode;
                     fontSize = parent.querySelector('#fontSize').value;
                     unit = parent.querySelector('#unit').value;
+                    let setFontSize = unit==''?'auto':fontSize+unit;
 
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['fontSize'] = fontSize+unit;
+                            col.attr['fontSize'] = setFontSize;
                         });
                     }
 
@@ -592,13 +553,13 @@ export const Gantt = (function () {
                         gantt[ganttType].map(row=>{
                             return row.map((col, cid)=>{
                                 if(cid==parseInt(colid.value)){
-                                    col.attr['fontSize'] = fontSize+unit;
+                                    col.attr['fontSize'] = setFontSize;
                                 }
                             });
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr['fontSize'] = fontSize+unit;
+                    gantt[ganttType][rowid.value][colid.value].attr['fontSize'] = setFontSize;
                     break;
 
                 case 'al': case 'ac': case 'ar':
@@ -631,20 +592,21 @@ export const Gantt = (function () {
                     let getUnit = target.id.match(/(.+)Unit/);
                     let direct = getUnit?getUnit[1]:'';
                     let convert = direct?`border${direct.charAt(0).toUpperCase()+direct.slice(1)}Width`:target.id;
+                    let setDirectionBorderWidth = bUnit==''?'auto':bSize+bUnit;
 
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[convert] = bSize+bUnit;
+                            col.attr[convert] = setDirectionBorderWidth;
                         });
                     }
 
                     if(closest.querySelector('#bCol').checked){
                         gantt[ganttType].map(row=>{
-                            return row[colid.value].attr[convert] = bSize+bUnit;
+                            return row[colid.value].attr[convert] = setDirectionBorderWidth;
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr[convert] = bSize+bUnit;
+                    gantt[ganttType][rowid.value][colid.value].attr[convert] = setDirectionBorderWidth;
                     break;
 
                 case 'borderTopStyle': case 'borderBottomStyle': case 'borderLeftStyle': case 'borderRightStyle':
@@ -710,10 +672,11 @@ export const Gantt = (function () {
 
                     let aSize = parent.querySelector('#borderWidth').value;
                     let aUnit = parent.querySelector('#allUnit').value;
+                    let setBorderWidth = aUnit==''?'auto':aSize+aUnit;
 
                     gantt[ganttType] = gantt[ganttType].map(row=>{
                         return row.map(col=>{
-                            col.attr['borderWidth'] = aSize + aUnit;
+                            col.attr['borderWidth'] = setBorderWidth;
                             return col;
                         });
                     });
@@ -754,14 +717,15 @@ export const Gantt = (function () {
                     gantt[ganttType][rowid.value][colid.value].attr[target.id] = aWeight;
                     break;
 
-                 case 'width':
+                 case 'width': case 'widthUnit':
                     parent = target.parentNode;
                     let aWidth = parent.querySelector('#width').value;
                     let widthUnit = parent.querySelector('#widthUnit').value;
+                    let setWidth = widthUnit==''?'auto':aWidth+widthUnit;
 
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = aWidth+widthUnit;
+                            col.attr['width'] = setWidth;
                         });
                     }
 
@@ -769,23 +733,24 @@ export const Gantt = (function () {
                         gantt[ganttType].map(row=>{
                             return row.map((col, cid)=>{
                                 if(cid==parseInt(colid.value)){
-                                    col.attr[target.id] = aWidth+widthUnit;
+                                    col.attr['width'] = setWidth;
                                 }
                             });
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aWidth+widthUnit;
+                    gantt[ganttType][rowid.value][colid.value].attr['width'] = setWidth;
                     break;
 
-                 case 'height':
+                 case 'height': case 'heightUnit':
                     parent = target.parentNode;
                     let aHeight = parent.querySelector('#height').value;
                     let heightUnit = parent.querySelector('#heightUnit').value;
+                    let setHeight = heightUnit==''?'auto':aHeight+heightUnit;
 
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = aHeight+heightUnit;
+                            col.attr['height'] = setHeight;
                         });
                     }
 
@@ -793,13 +758,13 @@ export const Gantt = (function () {
                         gantt[ganttType].map(row=>{
                             return row.map((col, cid)=>{
                                 if(cid==parseInt(colid.value)){
-                                    col.attr[target.id] = aHeight+heightUnit;
+                                    col.attr['height'] = setHeight;
                                 }
                             });
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aHeight+heightUnit;
+                    gantt[ganttType][rowid.value][colid.value].attr['height'] = setHeight;
                     break;
             }
 
@@ -937,29 +902,57 @@ export const Gantt = (function () {
         this.addHeadRow = function(rowid){
             let temp = {};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
+            let isEmpty = Object.keys(temp).length==0;
             rowid = parseInt(rowid);
-            gantt.head.splice(rowid + 1, 0, new Array(gantt.head[rowid].length).fill({text:'New Contents', attr: temp||{}}));
+            gantt.head.splice(rowid + 1, 0, [...gantt.head[rowid]].map((col, cid)=>{
+                let beforeCopy = {};
+                Object.entries(col.attr).forEach(([k,v])=>beforeCopy[k]=v);
+
+                col = {text:'New Contents', attr: isEmpty?beforeCopy:temp||{}};
+                return col;
+            }));
         }
 
         this.addBodyRow = function(rowid){
             let temp = {};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
+            let isEmpty = Object.keys(temp).length==0;
             rowid = parseInt(rowid);
-            gantt.body.splice(rowid + 1, 0, new Array(gantt.body[rowid].length).fill({text:'New Contents', attr: temp||{}}));
+            gantt.body.splice(rowid + 1, 0, [...gantt.body[rowid]].map((col, cid)=>{
+                let beforeCopy = {};
+                Object.entries(col.attr).forEach(([k,v])=>beforeCopy[k]=v);
+
+                col = {text:'New Contents', attr: isEmpty?beforeCopy:temp||{}};
+                return col;
+            }));
         }
 
         this.addHeadCol = function(colid){
             let temp = {};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
+            let isEmpty = Object.keys(temp).length==0;
             colid = parseInt(colid);
-            gantt.head.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr: temp||{}}));
+            gantt.head.map(row=>{
+                let beforeCopy = {};
+                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy[k]=v);
+
+                row.splice(colid + 1, 0, {text:'New Contents', attr: isEmpty?beforeCopy:temp||{}});
+                return row;
+            });
         }
 
         this.addBodyCol = function(colid){
             let temp = {};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp[k]=v);
+            let isEmpty = Object.keys(temp).length==0;
             colid = parseInt(colid);
-            gantt.body.map(row=>row.splice(colid + 1, 0, {text:'New Contents', attr: temp||{}}));
+            gantt.body.map(row=>{
+                let beforeCopy = {};
+                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy[k]=v);
+
+                row.splice(colid + 1, 0, {text:'New Contents', attr: isEmpty?beforeCopy:temp||{}});
+                return row;
+            });
         }
 
         this.popupDeleteBtn = function (target){
@@ -1109,13 +1102,20 @@ export const Gantt = (function () {
                 },
                 controlList: {
                     render(target, data, {x, y}, isCopied){
+                        const styles = ['solid', 'dotted', 'dashed', 'groove', 'ridge', 'double', 'outset', 'hidden', 'none'];
+                        const units = ['auto', 'px', 'cm', 'mm', 'in', 'pc', 'pt', 'ch', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax'];
+
+                        const setBorderStyle = (style)=> [...styles].map(st=>`<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('');
+
+                        const setNumberUnit = (unitName)=> [...units].map(numberUnit=>`<option${(unitName||'auto')==numberUnit?' selected':''} value="${numberUnit=='auto'?'':numberUnit}">${numberUnit}</option>`).join('');
+                        
                         const {rowid, colid} = target.attributes;
-                        const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/).slice(1)||[0,'px'];
+                        const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/)?.slice(1)||[16,'px'];
 
                         const fontWeight = data.attr.fontWeight||'normal';
 
-                        const [width, widthUnit] = data.attr.width?.match(/([0-9.]+)(\w+|\%)/).slice(1)||[target.clientWidth, 'px'];
-                        const [height, heightUnit] = data.attr.height?.match(/([0-9.]+)(\w+|\%)/).slice(1)||[target.clientHeight, 'px'];
+                        const [width, widthUnit] = data.attr.width?.match(/([0-9.]+)(\w+)/)?.slice(1)||[target.clientWidth, 'px'];
+                        const [height, heightUnit] = data.attr.height?.match(/([0-9.]+)(\w+)/)?.slice(1)||[target.clientHeight, 'px'];
 
                         const [borderWidth, allUnit] = data.attr.borderWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
                         const borderStyle = data.attr.borderStyle;
@@ -1155,7 +1155,8 @@ export const Gantt = (function () {
                             rowid="${rowid.value}"
                             colid="${colid.value}"
                             style="
-                                top: ${y}px;
+                                transform: translateY(0%);
+                                top: ${y + document.body.scrollTop}px;
                                 left: ${x}px;
                                 ${window.innerWidth/2<x?'transform: translateX(-50%)':''}
                             ">
@@ -1186,39 +1187,15 @@ export const Gantt = (function () {
                                     <span>Width & Height</span>
                                     <br>
                                     <label for="width">Width</label>
-                                    <input type="number" class="form-input attrs" id="width" value="${width}">
+                                    <input type="number" class="form-input attrs" id="width" value="${widthUnit=='auto'?'auto':width}">
                                     <select id="widthUnit" class="form-input attrs">
-                                        <option${(widthUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                        <option${(widthUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                        <option${(widthUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                        <option${(widthUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                        <option${(widthUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                        <option${(widthUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                        <option${(widthUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                        <option${(widthUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                        <option${(widthUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                        <option${(widthUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                        <option${(widthUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                        <option${(widthUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                        <option${(widthUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                        ${setNumberUnit(widthUnit)}
                                     </select>
                                     <br>
                                     <label for="height">Height</label>
                                     <input type="number" class="form-input attrs" id="height" value="${height}">
                                     <select id="heightUnit" class="form-input attrs">
-                                        <option${(heightUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                        <option${(heightUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                        <option${(heightUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                        <option${(heightUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                        <option${(heightUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                        <option${(heightUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                        <option${(heightUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                        <option${(heightUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                        <option${(heightUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                        <option${(heightUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                        <option${(heightUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                        <option${(heightUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                        <option${(heightUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                        ${setNumberUnit(heightUnit)}
                                     </select>
                                 </li>
                                 <li class="text-center">
@@ -1226,34 +1203,14 @@ export const Gantt = (function () {
                                     <br>
                                     <button class="btn" id="bReset">Reset Border</button>
                                     <br>
-                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${borderWidth}">
+                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${allUnit=='auto'?'auto':borderWidth}">
 
                                     <select id="allUnit" class="form-input attrs">
-                                        <option${(allUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                        <option${(allUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                        <option${(allUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                        <option${(allUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                        <option${(allUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                        <option${(allUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                        <option${(allUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                        <option${(allUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                        <option${(allUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                        <option${(allUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                        <option${(allUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                        <option${(allUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                        <option${(allUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                        ${setNumberUnit(allUnit)}
                                     </select>
 
                                     <select id="borderStyle" class="form-input attrs" style="width: 70px;">
-                                        <option${(borderStyle||'solid')=='solid'?' selected':''} value="solid">solid</option>
-                                        <option${(borderStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option>
-                                        <option${(borderStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option>
-                                        <option${(borderStyle||'solid')=='double'?' selected':''} value="double">double</option>
-                                        <option${(borderStyle||'solid')=='groove'?' selected':''} value="groove">groove</option>
-                                        <option${(borderStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option>
-                                        <option${(borderStyle||'solid')=='outset'?' selected':''} value="outset">outset</option>
-                                        <option${(borderStyle||'solid')=='none'?' selected':''} value="none">none</option>
-                                        <option${(borderStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option>
+                                        ${setBorderStyle(borderStyle)}
                                     </select>
                                     <input type="color" id="borderColor" class="form-input attrs" value="${borderColor}">
                                 </li>
@@ -1266,31 +1223,11 @@ export const Gantt = (function () {
                                             <input id="borderTopWidth" class="form-input border attrs" border="top" type="number" min="0" style="width: 50px;" value="${borderTopWidth}">
 
                                             <select id="topUnit" class="form-input attrs">
-                                                <option${(topUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                                <option${(topUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                                <option${(topUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                                <option${(topUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                                <option${(topUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                                <option${(topUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                                <option${(topUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                                <option${(topUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                                <option${(topUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                                <option${(topUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                                <option${(topUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                                <option${(topUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                                <option${(topUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                                ${setNumberUnit(topUnit)}
                                             </select>
 
                                             <select id="borderTopStyle" class="form-input attrs" style="width: 70px;">
-                                                <option${(borderTopStyle||'solid')=='solid'?' selected':''} value="solid">solid</option>
-                                                <option${(borderTopStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option>
-                                                <option${(borderTopStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option>
-                                                <option${(borderTopStyle||'solid')=='double'?' selected':''} value="double">double</option>
-                                                <option${(borderTopStyle||'solid')=='groove'?' selected':''} value="groove">groove</option>
-                                                <option${(borderTopStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option>
-                                                <option${(borderTopStyle||'solid')=='outset'?' selected':''} value="outset">outset</option>
-                                                <option${(borderTopStyle||'solid')=='none'?' selected':''} value="none">none</option>
-                                                <option${(borderTopStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option>
+                                                ${setBorderStyle(borderTopStyle)}
                                             </select>
                                             <input type="color" id="borderTopColor" class="form-input attrs" value="${borderTopColor}">
                                         </label>
@@ -1299,31 +1236,11 @@ export const Gantt = (function () {
                                             <input id="borderLeftWidth" class="form-input border attrs" border="left" type="number" min="0" style="width: 50px;" value="${borderLeftWidth}">
 
                                             <select id="leftUnit" class="form-input attrs">
-                                                <option${(leftUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                                <option${(leftUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                                <option${(leftUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                                <option${(leftUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                                <option${(leftUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                                <option${(leftUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                                <option${(leftUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                                <option${(leftUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                                <option${(leftUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                                <option${(leftUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                                <option${(leftUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                                <option${(leftUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                                <option${(leftUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                                ${setNumberUnit(leftUnit)}
                                             </select>
 
                                             <select id="borderLeftStyle" class="form-input attrs" style="width: 70px;">
-                                                <option${(borderLeftStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
-                                                <option${(borderLeftStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
-                                                <option${(borderLeftStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
-                                                <option${(borderLeftStyle||'solid')=='double'?' selected':''} value="double">double</option$>
-                                                <option${(borderLeftStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
-                                                <option${(borderLeftStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
-                                                <option${(borderLeftStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
-                                                <option${(borderLeftStyle||'solid')=='none'?' selected':''} value="none">none</option$>
-                                                <option${(borderLeftStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                                ${setBorderStyle(borderLeftStyle)}
                                             </select>
                                             <input type="color" id="borderLeftColor" class="form-input attrs" value="${borderLeftColor}">
                                         </label>
@@ -1332,31 +1249,11 @@ export const Gantt = (function () {
                                             <input id="borderRightWidth" class="form-input border attrs" border="right" type="number" min="0" style="width: 50px;" value="${borderRightWidth}">
 
                                             <select id="rightUnit" class="form-input attrs">
-                                                <option${(rightUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                                <option${(rightUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                                <option${(rightUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                                <option${(rightUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                                <option${(rightUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                                <option${(rightUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                                <option${(rightUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                                <option${(rightUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                                <option${(rightUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                                <option${(rightUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                                <option${(rightUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                                <option${(rightUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                                <option${(rightUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                                ${setNumberUnit(rightUnit)}
                                             </select>
 
                                             <select id="borderRightStyle" class="form-input attrs" style="width: 70px;">
-                                                <option${(borderRightStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
-                                                <option${(borderRightStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
-                                                <option${(borderRightStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
-                                                <option${(borderRightStyle||'solid')=='double'?' selected':''} value="double">double</option$>
-                                                <option${(borderRightStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
-                                                <option${(borderRightStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
-                                                <option${(borderRightStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
-                                                <option${(borderRightStyle||'solid')=='none'?' selected':''} value="none">none</option$>
-                                                <option${(borderRightStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                                ${setBorderStyle(borderRightStyle)}
                                             </select>
                                             <input type="color" id="borderRightColor" class="form-input attrs" value="${borderRightColor}">
                                         </label>
@@ -1365,31 +1262,11 @@ export const Gantt = (function () {
                                             <input id="borderBottomWidth" class="form-input border attrs" border="bottom" type="number" min="0" style="width: 50px;" value="${borderBottomWidth}">
 
                                             <select id="bottomUnit" class="form-input attrs">
-                                                <option${(bottomUnit||'px')=='px'?' selected':''} value="px">px</option>
-                                                <option${(bottomUnit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                                <option${(bottomUnit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                                <option${(bottomUnit||'px')=='in'?' selected':''} value="in">in</option>
-                                                <option${(bottomUnit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                                <option${(bottomUnit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                                <option${(bottomUnit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                                <option${(bottomUnit||'px')=='em'?' selected':''} value="em">em</option>
-                                                <option${(bottomUnit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                                <option${(bottomUnit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                                <option${(bottomUnit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                                <option${(bottomUnit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                                <option${(bottomUnit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                                ${setNumberUnit(bottomUnit)}
                                             </select>
 
                                             <select id="borderBottomStyle" class="form-input attrs" style="width: 70px;">
-                                                <option${(borderBottomStyle||'solid')=='solid'?' selected':''} value="solid">solid</option$>
-                                                <option${(borderBottomStyle||'solid')=='dotted'?' selected':''} value="dotted">dotted</option$>
-                                                <option${(borderBottomStyle||'solid')=='dashed'?' selected':''} value="dashed">dashed</option$>
-                                                <option${(borderBottomStyle||'solid')=='double'?' selected':''} value="double">double</option$>
-                                                <option${(borderBottomStyle||'solid')=='groove'?' selected':''} value="groove">groove</option$>
-                                                <option${(borderBottomStyle||'solid')=='ridge'?' selected':''} value="ridge">ridge</option$>
-                                                <option${(borderBottomStyle||'solid')=='outset'?' selected':''} value="outset">outset</option$>
-                                                <option${(borderBottomStyle||'solid')=='none'?' selected':''} value="none">none</option$>
-                                                <option${(borderBottomStyle||'solid')=='hidden'?' selected':''} value="hidden">hidden</option$>
+                                                ${setBorderStyle(borderBottomStyle)}
                                             </select>
                                             <input type="color" id="borderBottomColor" class="form-input attrs" value="${borderBottomColor}">
                                         </label>
@@ -1430,19 +1307,7 @@ export const Gantt = (function () {
                                     <br>
                                     <input id="fontSize" type="number" value="${number||16}" min="0" class="form-input attrs">
                                     <select id="unit" class="form-input attrs">
-                                        <option${(unit||'px')=='px'?' selected':''} value="px">px</option>
-                                        <option${(unit||'px')=='cm'?' selected':''} value="cm">cm</option>
-                                        <option${(unit||'px')=='mm'?' selected':''} value="mm">mm</option>
-                                        <option${(unit||'px')=='in'?' selected':''} value="in">in</option>
-                                        <option${(unit||'px')=='pc'?' selected':''} value="pc">pc</option>
-                                        <option${(unit||'px')=='pt'?' selected':''} value="pt">pt</option>
-                                        <option${(unit||'px')=='ch'?' selected':''} value="ch">ch</option>
-                                        <option${(unit||'px')=='em'?' selected':''} value="em">em</option>
-                                        <option${(unit||'px')=='rem'?' selected':''} value="rem">rem</option>
-                                        <option${(unit||'px')=='vh'?' selected':''} value="vh">vh</option>
-                                        <option${(unit||'px')=='vw'?' selected':''} value="vw">vw</option>
-                                        <option${(unit||'px')=='vmin'?' selected':''} value="vmin">vmin</option>
-                                        <option${(unit||'px')=='vmax'?' selected':''} value="vmax">vmax</option>
+                                        ${setNumberUnit(unit)}
                                     </select>
                                 </li>
                                 <li class="text-center">
