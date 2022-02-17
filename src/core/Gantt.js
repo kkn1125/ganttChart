@@ -1,5 +1,14 @@
 export const Gantt = (function () {
     const ganttChart = document.querySelector('#gantt');
+    const textEdit = {};
+
+    textEdit.spaceToNbsp = (value) => value.replace(/[\s]/gm, '&nbsp;');
+    textEdit.nbspToSpace = (value) => value.replace(/&nbsp;/gm, ' ');
+    textEdit.enterToBr = (value) => value.replace(/[\n]/gm, '<br>');
+    textEdit.brToEnter = (value) => value.replace(/<br>/gm, '\n');
+
+    textEdit.taToHTML = (ta) => textEdit.spaceToNbsp(textEdit.enterToBr(ta));
+    textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
     function Controller() {
         let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol;
@@ -9,6 +18,7 @@ export const Gantt = (function () {
 
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
+            window.addEventListener('click', this.addInitialRow);
             window.addEventListener('click', this.borderReset);
             window.addEventListener('click', this.movingRowCol);
             window.addEventListener('click', this.emptyCopiedAttrs);
@@ -28,6 +38,14 @@ export const Gantt = (function () {
             window.addEventListener('change', this.autoValueChange);
             window.addEventListener('input', this.autoAttrsValueChange);
             window.addEventListener('keydown', this.inputKey.bind(this));
+        }
+
+        this.addInitialRow = function (ev){
+            const target = ev.target;
+            if(target.id!='addRowHead' && target.id!='addRowBody') return;
+            
+            if(target.id == 'addRowHead') models.addInitailRowHead();
+            else if(target.id == 'addRowBody') models.addInitailRowBody();
         }
 
         this.workUndo = function (ev){
@@ -164,7 +182,7 @@ export const Gantt = (function () {
         this.saveContent = function (target, parent){
             parent.classList.remove('active');
             target.blur();
-            parent.innerHTML = target.value.replace(/[\n]/gm, '<br>');
+            parent.innerHTML = textEdit.taToHTML(target.value);
             save = null;
             saveContent = null;
             toggler = false;
@@ -235,7 +253,7 @@ export const Gantt = (function () {
                         el.classList.remove('active');
                         if(el.querySelector('textarea')){
                             models.autoValueChange(el.querySelector('textarea'));
-                            el.innerHTML = el.querySelector('textarea').value.replace(/[\n]/gm, '<br>');
+                            el.innerHTML = textEdit.taToHTML(el.querySelector('textarea').value);
                         }
                         toggler = false;
                     }
@@ -247,7 +265,7 @@ export const Gantt = (function () {
                 if(el!=closests){
                     el.classList.remove('active');
                     if(el.querySelector('textarea')){
-                        el.innerHTML = el.querySelector('textarea').value.replace(/[\n]/gm, '<br>');
+                        el.innerHTML = textEdit.taToHTML(el.querySelector('textarea').value);
                     }
                     toggler = false;
                 }
@@ -257,7 +275,7 @@ export const Gantt = (function () {
 
             if(!save.classList.contains('active')) {
                 save.classList.add('active');
-                saveContent = save.innerHTML.replace(/<br>/gm, '\n');
+                saveContent = textEdit.htmlToTa(save.innerHTML);
                 toggler = true;
             } else {
                 save.classList.remove('active');
@@ -265,7 +283,7 @@ export const Gantt = (function () {
             }
             
             if(toggler){
-                ta.value = save.innerHTML.replace(/<br>/g, '\n');
+                ta.value = textEdit.htmlToTa(save.innerHTML);
                 save.insertAdjacentElement('beforeend', ta);
                 ta.focus();
                 ta.select();
@@ -393,6 +411,34 @@ export const Gantt = (function () {
                 this.setStorage(gantt);
                 views.renderChart(gantt);
             }
+        }
+
+        this.addInitailRowHead = function (){
+            if(gantt.head.length==0 || gantt.head[0].every(a=>a.length==0)) {
+                let temp = {text: '', attr: {}};
+                Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+
+                temp.text = copiedContents.text;
+                gantt.head = [];
+
+                gantt.head.splice(0, 1, new Array(gantt.body[0]?gantt.body[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+            }
+
+            this.renderChart();
+        }
+
+        this.addInitailRowBody = function (){
+            if(gantt.body.length==0 || gantt.body[0].every(a=>a.length==0)) {
+                let temp = {text: '', attr: {}};
+                Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+
+                temp.text = copiedContents.text;
+                gantt.body = [];
+                
+                gantt.body.splice(0, 1, new Array(gantt.head[0]?gantt.head[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+            }
+
+            this.renderChart();
         }
 
         this.borderReset = function (target, controlList){
@@ -547,92 +593,21 @@ export const Gantt = (function () {
             const type = closest.getAttribute('type');
             const ganttType = type=='TH'?'head':'body';
             const {rowid, colid} = closest.attributes;
-            let hex, rgb, opacity, hexOpacity, bgHex, bgRgb, bgOpacity, hexBgOpacity, align, fontSize, unit, parent, bSize, bUnit;
 
+            let autoValue = [...document.querySelectorAll(`#${target.id}`)].reduce((pre, cur)=>{
+                let value;
+                if(cur.type=='range'){
+                    let hex = parseInt(cur.value).toString(16);
+                    value = hex.length==1?`0${hex}`:hex||'ff';
+                } else {
+                    value = cur.value;
+                }
+                return pre += value;
+            }, '');
+            
             switch(target.id){
-                case 'color': case 'colorOpacity':
-                    parent = target.parentNode;
-                    hex = parent.querySelector('#color').value;
-                    opacity = parseInt(parent.querySelector('#colorOpacity').value);
-                    rgb = hex.slice(1).match(/.{1,2}/g).map(e=>parseInt(e, 16));
-
-                    hexOpacity = opacity.toString(16);
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['color'] = hex+hexOpacity;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['color'] = hex+hexOpacity;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr['color'] = hex+hexOpacity;
-                    break;
-
-                case 'backgroundColor': case 'backgroundColorOpacity':
-                    parent = target.parentNode;
-                    bgHex = parent.querySelector('#backgroundColor').value;
-                    bgOpacity = parseInt(parent.querySelector('#backgroundColorOpacity').value);
-                    bgRgb = bgHex.slice(1).match(/.{1,2}/g).map(e=>parseInt(e, 16));
-
-                    hexBgOpacity = bgOpacity.toString(16);
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['backgroundColor'] = bgHex+hexBgOpacity;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['backgroundColor'] = bgHex+hexBgOpacity;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr['backgroundColor'] = bgHex+hexBgOpacity;
-                    break;
-
-                case 'fontSize': case 'unit':
-                    parent = target.parentNode;
-                    fontSize = parent.querySelector('#fontSize').value;
-                    unit = parent.querySelector('#unit').value;
-                    let setFontSize = unit==''?'auto':fontSize+unit;
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['fontSize'] = setFontSize;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['fontSize'] = setFontSize;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr['fontSize'] = setFontSize;
-                    break;
-
                 case 'al': case 'ac': case 'ar':
-                    parent = target.parentNode;
-                    align = target.value;
-
+                    let align = document.querySelector('[name="align"]:checked').value;
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
                             col.attr['textAlign'] = align;
@@ -641,197 +616,48 @@ export const Gantt = (function () {
 
                     if(closest.querySelector('#bCol').checked){
                         gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['textAlign'] = align;
-                                }
-                            });
+                            return row[colid.value].attr['textAlign'] = align;
                         });
                     }
 
                     gantt[ganttType][rowid.value][colid.value].attr['textAlign'] = align;
                     break;
 
-                case 'borderTopWidth': case 'borderBottomWidth': case 'borderLeftWidth': case 'borderRightWidth': case 'topUnit': case 'bottomUnit': case 'leftUnit': case 'rightUnit':
-                    parent = target.parentNode;
-                    bSize = parent.querySelector('#borderTopWidth, #borderBottomWidth, #borderLeftWidth, #borderRightWidth').value;
-                    bUnit = parent.querySelector('#topUnit, #bottomUnit, #leftUnit, #rightUnit').value;
-                    let getUnit = target.id.match(/(.+)Unit/);
-                    let direct = getUnit?getUnit[1]:'';
-                    let convert = direct?`border${direct.charAt(0).toUpperCase()+direct.slice(1)}Width`:target.id;
-                    let setDirectionBorderWidth = bUnit==''?'auto':bSize+bUnit;
-
+                case 'borderWidth': case 'borderStyle': case 'borderColor':
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[convert] = setDirectionBorderWidth;
+                            col.attr[target.id] = autoValue;
                         });
                     }
 
                     if(closest.querySelector('#bCol').checked){
                         gantt[ganttType].map(row=>{
-                            return row[colid.value].attr[convert] = setDirectionBorderWidth;
+                            return row[colid.value].attr[target.id] = autoValue;
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr[convert] = setDirectionBorderWidth;
-                    break;
-
-                case 'borderTopStyle': case 'borderBottomStyle': case 'borderLeftStyle': case 'borderRightStyle':
-                    parent = target.parentNode;
-                    let bStyle = target.value;
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = bStyle;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr[target.id] = bStyle;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = bStyle;
-                    break;
-
-                case 'borderTopColor': case 'borderBottomColor': case 'borderLeftColor': case 'borderRightColor':
-                    parent = target.parentNode;
-                    let bColor = target.value;
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = bColor;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr[target.id] = bColor;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = bColor;
-                    break;
-
-                case 'borderColor':
-                    parent = target.parentNode;
-                    let aColor = target.value;
-
-                    gantt[ganttType] = gantt[ganttType].map(row=>{
+                    gantt[ganttType].map(row=>{
                         return row.map(col=>{
-                            col.attr['borderColor'] = aColor;
+                            col.attr[target.id] = autoValue;
                             return col;
                         });
                     });
                     break;
 
-                case 'borderWidth': case 'allUnit':
-                    parent = target.parentNode;
-
-                    let aSize = parent.querySelector('#borderWidth').value;
-                    let aUnit = parent.querySelector('#allUnit').value;
-                    let setBorderWidth = aUnit==''?'auto':aSize+aUnit;
-
-                    gantt[ganttType] = gantt[ganttType].map(row=>{
-                        return row.map(col=>{
-                            col.attr['borderWidth'] = setBorderWidth;
-                            return col;
-                        });
-                    });
-                    break;
-
-                 case 'borderStyle':
-                    parent = target.parentNode;
-                    let aStyle = target.value;
-
-                    gantt[ganttType] = gantt[ganttType].map(row=>{
-                        return row.map(col=>{
-                            col.attr['borderStyle'] = aStyle;
-                            return col;
-                        });
-                    });
-                    break;
-                    
-                 case 'fontWeight':
-                    parent = target.parentNode;
-                    let aWeight = target.value;
-
+                default :
                     if(closest.querySelector('#bRow').checked){
                         gantt[ganttType][rowid.value].map(col=>{
-                            col.attr[target.id] = aWeight;
+                            col.attr[target.id] = autoValue;
                         });
                     }
 
                     if(closest.querySelector('#bCol').checked){
                         gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr[target.id] = aWeight;
-                                }
-                            });
+                            return row[colid.value].attr[target.id] = autoValue;
                         });
                     }
 
-                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = aWeight;
-                    break;
-
-                 case 'width': case 'widthUnit':
-                    parent = target.parentNode;
-                    let aWidth = parent.querySelector('#width').value;
-                    let widthUnit = parent.querySelector('#widthUnit').value;
-                    let setWidth = widthUnit==''?'auto':aWidth+widthUnit;
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['width'] = setWidth;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['width'] = setWidth;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr['width'] = setWidth;
-                    break;
-
-                 case 'height': case 'heightUnit':
-                    parent = target.parentNode;
-                    let aHeight = parent.querySelector('#height').value;
-                    let heightUnit = parent.querySelector('#heightUnit').value;
-                    let setHeight = heightUnit==''?'auto':aHeight+heightUnit;
-
-                    if(closest.querySelector('#bRow').checked){
-                        gantt[ganttType][rowid.value].map(col=>{
-                            col.attr['height'] = setHeight;
-                        });
-                    }
-
-                    if(closest.querySelector('#bCol').checked){
-                        gantt[ganttType].map(row=>{
-                            return row.map((col, cid)=>{
-                                if(cid==parseInt(colid.value)){
-                                    col.attr['height'] = setHeight;
-                                }
-                            });
-                        });
-                    }
-
-                    gantt[ganttType][rowid.value][colid.value].attr['height'] = setHeight;
+                    gantt[ganttType][rowid.value][colid.value].attr[target.id] = autoValue;
                     break;
             }
 
@@ -865,6 +691,7 @@ export const Gantt = (function () {
                     return;
                 });
             });
+            
             temp.body.map(row=>{
                 return row.map(col=>{
                     delete col.attr['[object HTMLInputElement]'];
@@ -1052,19 +879,19 @@ export const Gantt = (function () {
 
         this.popupDeleteBtn = function (target){
             const rect = target.getBoundingClientRect();
-            let control = 0;
+            let control = 3;
             switch(target.tagName){
                 case 'TH':
-                    if(gantt.head.length==1 && gantt.head[0].length==1) control = 0;
-                    else if(gantt.head.length>1 && gantt.head[0].length==1) control = 2;
-                    else if(gantt.head.length==1 && gantt.head[0].length>1) control = 1;
-                    else if(gantt.head.length>1 && gantt.head[0].length>1) control = 3;
+                    // if(gantt.head.length==1 && gantt.head[0].length==1) control = 0;
+                    // else if(gantt.head.length>1 && gantt.head[0].length==1) control = 2;
+                    // else if(gantt.head.length==1 && gantt.head[0].length>1) control = 1;
+                    // else if(gantt.head.length>1 && gantt.head[0].length>1) control = 3;
                     break;
                 case 'TD':
-                    if(gantt.body.length==1 && gantt.body[0].length==1) control = 0;
-                    else if(gantt.body.length>1 && gantt.body[0].length==1) control = 2;
-                    else if(gantt.body.length==1 && gantt.body[0].length>1) control = 1;
-                    else if(gantt.body.length>1 && gantt.body[0].length>1) control = 3;
+                    // if(gantt.body.length==1 && gantt.body[0].length==1) control = 0;
+                    // else if(gantt.body.length>1 && gantt.body[0].length==1) control = 2;
+                    // else if(gantt.body.length==1 && gantt.body[0].length>1) control = 1;
+                    // else if(gantt.body.length>1 && gantt.body[0].length>1) control = 3;
                     break;
             }
             views.popupDeleteBtn(target, rect, control);
@@ -1097,7 +924,7 @@ export const Gantt = (function () {
 
         this.renderTable = function (){
             parts.table.render(ganttChart);
-
+            
             chart = document.querySelector('#chart');
             thead = document.querySelector('#thead');
             tbody = document.querySelector('#tbody');
@@ -1118,8 +945,6 @@ export const Gantt = (function () {
         }
 
         this.renderChart = function (gantt) {
-            chart.id = 'chart';
-
             this.clearThead();
             this.clearTbody();
             this.clearBtns();
@@ -1135,7 +960,7 @@ export const Gantt = (function () {
                         th.style[key] = val;
                     });
 
-                    th.innerHTML = cols.text.replace(/[\n]/gm, '<br>');
+                    th.innerHTML = textEdit.taToHTML(cols.text);
                     th.setAttribute('rowId', rowId);
                     th.setAttribute('colId', colId);
                     tr.append(th);
@@ -1154,7 +979,7 @@ export const Gantt = (function () {
                         td.style[key] = val;
                     });
 
-                    td.innerHTML = cols.text.replace(/[\n]/gm, '<br>');
+                    td.innerHTML = textEdit.taToHTML(cols.text);
                     td.setAttribute('rowId', rowId);
                     td.setAttribute('colId', colId);
                     tr.append(td);
@@ -1185,7 +1010,7 @@ export const Gantt = (function () {
             const parts = {
                 table: {
                     render(target){
-                        target.insertAdjacentHTML('beforeend',`<table id="chart">
+                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout: fixed;border-collapse: collapse;width: 100%;border-spacing: 0;">
                             <thead id="thead">
                                 
                             </thead>
@@ -1200,42 +1025,41 @@ export const Gantt = (function () {
                         const styles = ['solid', 'dotted', 'dashed', 'groove', 'ridge', 'double', 'outset', 'hidden', 'none'];
                         const units = ['auto', 'px', 'cm', 'mm', 'in', 'pc', 'pt', 'ch', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax'];
 
-                        const setBorderStyle = (style)=> [...styles].map(st=>`<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('');
+                        const setBorderStyleList = (style) => [...styles].map(st => `<option${(style||'solid')==st?' selected':''} value="${st}">${st}</option$>`).join('');
 
-                        const setNumberUnit = (unitName)=> [...units].map(numberUnit=>`<option${(unitName||'auto')==numberUnit?' selected':''} value="${numberUnit=='auto'?'':numberUnit}">${numberUnit}</option>`).join('');
+                        const setNumberUnitList = (unitName) => [...units].map(numberUnit => `<option${(unitName||'auto')==numberUnit?' selected':''} value="${numberUnit=='auto'?'':numberUnit}">${numberUnit}</option>`).join('');
+
+                        const getNumber = function (id){
+                            let autoDefault = 0;
+                            if(id.match(/border/g)) autoDefault = 1;
+                            else if(id.match(/font/g)) autoDefault = 16;
+                            else if(id.match(/font/g)) autoDefault = 16;
+                            else if(id.match(/width/g)) autoDefault = target.clientWidth;
+                            return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).shift()||autoDefault;
+                        }
+                        
+                        const getUnit = function (id){
+                            return data.attr[id]?.match(/([0-9.]+)(\w+)/)?.slice(1).pop()||'px';
+                        }
+
+                        const getOpacity = (id) => data.attr[id]?.slice(7, 9)||'ff';
+                        const hexToNumber = (id) => parseFloat(parseInt((getOpacity(id)), 16).toFixed(2));
+                        
+                        const getColor = (id) => {
+                            let autoDefault = 0;
+                            if(id.match(/border/g)) autoDefault = '#e0e0e0';
+                            else if(id.match(/font/g)) autoDefault = '#000000';
+                            else if(id.match(/background/g)) autoDefault = '#ffffff';
+                            return data.attr[id]?.slice(0, 7)||'#e0e0e0';
+                        };
+
+                        const getStyle = (id) => {
+                            return data.attr[id];
+                        };
                         
                         const {rowid, colid} = target.attributes;
-                        const [number, unit] = data.attr.fontSize?.match(/([0-9.]+)(\w+)/)?.slice(1)||[16,'px'];
 
                         const fontWeight = data.attr.fontWeight||'normal';
-
-                        const [width, widthUnit] = data.attr.width?.match(/([0-9.]+)(\w+)/)?.slice(1)||[target.clientWidth, 'px'];
-                        const [height, heightUnit] = data.attr.height?.match(/([0-9.]+)(\w+)/)?.slice(1)||[target.clientHeight, 'px'];
-
-                        const [borderWidth, allUnit] = data.attr.borderWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
-                        const borderStyle = data.attr.borderStyle;
-                        const borderColor = data.attr.borderColor||'#e0e0e0';
-
-                        const [borderLeftWidth, leftUnit] = data.attr.borderLeftWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
-                        const borderLeftStyle = data.attr.borderLeftStyle;
-                        const borderLeftColor = data.attr.borderLeftColor||'#e0e0e0';
-                        
-                        const [borderRightWidth, rightUnit] = data.attr.borderRightWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
-                        const borderRightStyle = data.attr.borderRightStyle;
-                        const borderRightColor = data.attr.borderRightColor||'#e0e0e0';
-
-                        const [borderTopWidth, topUnit] = data.attr.borderTopWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
-                        const borderTopStyle = data.attr.borderTopStyle;
-                        const borderTopColor = data.attr.borderTopColor||'#e0e0e0';
-
-                        const [borderBottomWidth, bottomUnit] = data.attr.borderBottomWidth?.match(/([0-9.]+)(\w+)/)?.slice(1)||[1,'px'];
-                        const borderBottomStyle = data.attr.borderBottomStyle;
-                        const borderBottomColor = data.attr.borderBottomColor||'#e0e0e0';
-                        
-                        const hex = data.attr.color?.slice(0,7)||'#e0e0e0';
-                        const bgHex = data.attr.backgroundColor?.slice(0,7)||'#ffffff';
-                        const opacity = parseFloat(parseInt((data.attr.color?.slice(7, 9)||'ff'), 16).toFixed(2));
-                        const bgOpacity = parseFloat(parseInt((data.attr.backgroundColor?.slice(7, 9)||'ff'), 16).toFixed(2));
 
                         const radio = data.attr.textAlign;
 
@@ -1259,7 +1083,7 @@ export const Gantt = (function () {
                                     <span>Contents Copy</span>
                                     <br>
                                     ${isContentsCopied?`
-                                        <button id="pasteContents" class="btn">Pates</button>
+                                        <button id="pasteContents" class="btn">Paste</button>
                                     `:`
                                         <button id="pasteContents" class="btn" disabled>Pates</button>
                                     `}
@@ -1270,7 +1094,7 @@ export const Gantt = (function () {
                                     <span>Attrs Copy</span>
                                     <br>
                                     ${isCopied>0?`
-                                        <button id="pasteAttrs" class="btn">Pates</button>
+                                        <button id="pasteAttrs" class="btn">Paste</button>
                                     `:`
                                         <button id="pasteAttrs" class="btn" disabled>Pates</button>
                                     `}
@@ -1295,15 +1119,15 @@ export const Gantt = (function () {
                                     <span>Width & Height</span>
                                     <br>
                                     <label for="width">Width</label>
-                                    <input type="number" class="form-input attrs" id="width" value="${widthUnit=='auto'?'auto':width}">
-                                    <select id="widthUnit" class="form-input attrs">
-                                        ${setNumberUnit(widthUnit)}
+                                    <input type="number" class="form-input attrs" id="width" value="${getNumber('width')}">
+                                    <select id="width" class="form-input attrs">
+                                        ${setNumberUnitList(getUnit('width'))}
                                     </select>
                                     <br>
                                     <label for="height">Height</label>
-                                    <input type="number" class="form-input attrs" id="height" value="${height}">
-                                    <select id="heightUnit" class="form-input attrs">
-                                        ${setNumberUnit(heightUnit)}
+                                    <input type="number" class="form-input attrs" id="height" value="${getNumber('height')}">
+                                    <select id="height" class="form-input attrs">
+                                        ${setNumberUnitList(getUnit('height'))}
                                     </select>
                                 </li>
                                 <li class="text-center">
@@ -1311,16 +1135,16 @@ export const Gantt = (function () {
                                     <br>
                                     <button class="btn" id="bReset">Reset Border</button>
                                     <br>
-                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${allUnit=='auto'?'auto':borderWidth}">
+                                    <input id="borderWidth" class="form-input border attrs" type="number" min="0" style="width: 50px;" value="${getNumber('borderWidth')}">
 
-                                    <select id="allUnit" class="form-input attrs">
-                                        ${setNumberUnit(allUnit)}
+                                    <select id="borderWidth" class="form-input attrs">
+                                        ${setNumberUnitList(getUnit('borderWidth'))}
                                     </select>
 
                                     <select id="borderStyle" class="form-input attrs" style="width: 70px;">
-                                        ${setBorderStyle(borderStyle)}
+                                        ${setBorderStyleList(getStyle('borderStyle'))}
                                     </select>
-                                    <input type="color" id="borderColor" class="form-input attrs" value="${borderColor}">
+                                    <input type="color" id="borderColor" class="form-input attrs" value="${getColor('borderColor')}">
                                 </li>
                                 <li class="text-center">
                                     <span>Border</span>
@@ -1328,55 +1152,55 @@ export const Gantt = (function () {
                                     <span class="w-flex flex-column justify-content-center">
                                         <label class="w-flex justify-content-center" style="gap:.3rem;">
                                             top
-                                            <input id="borderTopWidth" class="form-input border attrs" border="top" type="number" min="0" style="width: 50px;" value="${borderTopWidth}">
+                                            <input id="borderTopWidth" class="form-input border attrs" border="top" type="number" min="0" style="width: 50px;" value="${getNumber('borderTopWidth')}">
 
-                                            <select id="topUnit" class="form-input attrs">
-                                                ${setNumberUnit(topUnit)}
+                                            <select id="borderTopWidth" class="form-input attrs">
+                                                ${setNumberUnitList(getUnit('borderTopWidth'))}
                                             </select>
 
                                             <select id="borderTopStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyle(borderTopStyle)}
+                                                ${setBorderStyleList(getStyle('borderTopStyle'))}
                                             </select>
-                                            <input type="color" id="borderTopColor" class="form-input attrs" value="${borderTopColor}">
+                                            <input type="color" id="borderTopColor" class="form-input attrs" value="${getColor('borderTopColor')}">
                                         </label>
                                         <label class="w-flex justify-content-center" style="gap:.3rem;">
                                             left
-                                            <input id="borderLeftWidth" class="form-input border attrs" border="left" type="number" min="0" style="width: 50px;" value="${borderLeftWidth}">
+                                            <input id="borderLeftWidth" class="form-input border attrs" border="left" type="number" min="0" style="width: 50px;" value="${getNumber('borderLeftWidth')}">
 
-                                            <select id="leftUnit" class="form-input attrs">
-                                                ${setNumberUnit(leftUnit)}
+                                            <select id="borderLeftWidth" class="form-input attrs">
+                                                ${setNumberUnitList(getUnit('borderLeftWidth'))}
                                             </select>
 
                                             <select id="borderLeftStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyle(borderLeftStyle)}
+                                                ${setBorderStyleList(getStyle('borderLeftStyle'))}
                                             </select>
-                                            <input type="color" id="borderLeftColor" class="form-input attrs" value="${borderLeftColor}">
+                                            <input type="color" id="borderLeftColor" class="form-input attrs" value="${getColor('borderLeftColor')}">
                                         </label>
                                         <label class="w-flex justify-content-center" style="gap:.3rem;">
                                             right
-                                            <input id="borderRightWidth" class="form-input border attrs" border="right" type="number" min="0" style="width: 50px;" value="${borderRightWidth}">
+                                            <input id="borderRightWidth" class="form-input border attrs" border="right" type="number" min="0" style="width: 50px;" value="${getNumber('borderRightWidth')}">
 
-                                            <select id="rightUnit" class="form-input attrs">
-                                                ${setNumberUnit(rightUnit)}
+                                            <select id="borderRightWidth" class="form-input attrs">
+                                                ${setNumberUnitList(getUnit('borderRightWidth'))}
                                             </select>
 
                                             <select id="borderRightStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyle(borderRightStyle)}
+                                                ${setBorderStyleList(getStyle('borderRightStyle'))}
                                             </select>
-                                            <input type="color" id="borderRightColor" class="form-input attrs" value="${borderRightColor}">
+                                            <input type="color" id="borderRightColor" class="form-input attrs" value="${getColor('borderRightColor')}">
                                         </label>
                                         <label class="w-flex justify-content-center" style="gap:.3rem;">
                                             bottom
-                                            <input id="borderBottomWidth" class="form-input border attrs" border="bottom" type="number" min="0" style="width: 50px;" value="${borderBottomWidth}">
+                                            <input id="borderBottomWidth" class="form-input border attrs" border="bottom" type="number" min="0" style="width: 50px;" value="${getNumber('borderBottomWidth')}">
 
-                                            <select id="bottomUnit" class="form-input attrs">
-                                                ${setNumberUnit(bottomUnit)}
+                                            <select id="borderBottomWidth" class="form-input attrs">
+                                                ${setNumberUnitList(getUnit('borderBottomWidth'))}
                                             </select>
 
                                             <select id="borderBottomStyle" class="form-input attrs" style="width: 70px;">
-                                                ${setBorderStyle(borderBottomStyle)}
+                                                ${setBorderStyleList(getStyle('borderBottomStyle'))}
                                             </select>
-                                            <input type="color" id="borderBottomColor" class="form-input attrs" value="${borderBottomColor}">
+                                            <input type="color" id="borderBottomColor" class="form-input attrs" value="${getColor('borderBottomColor')}">
                                         </label>
                                     </span>
                                 </li>
@@ -1387,16 +1211,16 @@ export const Gantt = (function () {
                                         <span>
                                             font
                                             <br>
-                                            <input type="color" id="color" class="form-input attrs" value="${hex}">
+                                            <input type="color" id="color" class="form-input attrs" value="${getColor('color')}">
                                             <br>
-                                            <input type="range" step="1" min="16" max="255" class="form-input attrs" id="colorOpacity" value="${opacity}">
+                                            <input type="range" step="1" min="0" max="255" class="form-input attrs" id="color" value="${hexToNumber('color')}">
                                         </span>
                                         <span>
                                             background
                                             <br>
-                                            <input type="color" id="backgroundColor" class="form-input attrs" value="${bgHex}">
+                                            <input type="color" id="backgroundColor" class="form-input attrs" value="${getColor('backgroundColor')}">
                                             <br>
-                                            <input type="range" step="1" min="16" max="255" class="form-input attrs" id="backgroundColorOpacity" value="${bgOpacity}">
+                                            <input type="range" step="1" min="0" max="255" class="form-input attrs" id="backgroundColor" value="${hexToNumber('backgroundColor')}">
                                         </span>
                                     </span>
                                 </li>
@@ -1413,9 +1237,9 @@ export const Gantt = (function () {
                                         </select>
                                     </span>
                                     <br>
-                                    <input id="fontSize" type="number" value="${number||16}" min="0" class="form-input attrs">
-                                    <select id="unit" class="form-input attrs">
-                                        ${setNumberUnit(unit)}
+                                    <input id="fontSize" type="number" value="${getNumber('fontSize')}" min="0" class="form-input attrs">
+                                    <select id="fontSize" class="form-input attrs">
+                                        ${setNumberUnitList(getUnit('fontSize'))}
                                     </select>
                                 </li>
                                 <li class="text-center">
