@@ -269,7 +269,8 @@ export const Gantt = (function () {
 
         this.closePopupControlList = function(ev){
             const target = ev.target;
-            const closest = target.closest('.control-list');
+            const closest = target.closest('.control-list, textarea');
+            // v0.2.1 셀 편집모드 내용 클릭 시 편집모드 종료되는 버그 수정 *textarea*
             
             if(!closest) {
                 document.querySelectorAll('th.active, td.active').forEach(el=>{
@@ -1324,7 +1325,6 @@ export const Gantt = (function () {
                         if(val != '' && val != undefined)
                         td.style[key] = val;
                     });
-
                     td.innerHTML = textEdit.taToHTML(cols.text);
                     td.setAttribute('rowId', rowId);
                     td.setAttribute('colId', colId);
