@@ -11,7 +11,7 @@ export const Gantt = (function () {
     textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false;
 
         this.init = function (model) {
             models = model;
@@ -19,6 +19,7 @@ export const Gantt = (function () {
             window.addEventListener('click', this.tabExcute.bind(this));
             window.addEventListener('click', this.selectWorkSheet);
             window.addEventListener('click', this.deleteWorkSheet);
+            window.addEventListener('click', this.workSheetBtn);
             
             window.addEventListener('keyup', this.cancelHotkey);
             window.addEventListener('keydown', this.hotKey.bind(this));
@@ -44,9 +45,21 @@ export const Gantt = (function () {
             window.addEventListener('mouseover', this.popupDeleteBtn);
             window.addEventListener('mouseover', this.popupAddBtn);
             window.addEventListener('contextmenu', this.popupControlList);
+            window.addEventListener('contextmenu', this.popupControlSheet);
             window.addEventListener('change', this.autoValueChange);
             window.addEventListener('input', this.autoAttrsValueChange);
             window.addEventListener('keydown', this.inputKey.bind(this));
+        }
+
+        this.workSheetBtn = function (ev){
+            const target = ev.target;
+            const closest = target.closest('.sheet-list');
+            if(!closest) {
+                editSheet = false;
+                models.saveWorkSheetName(target);
+                return;
+            }
+            models.workSheetBtn(closest, target);
         }
 
         this.selectWorkSheet = function (ev){
@@ -91,6 +104,7 @@ export const Gantt = (function () {
         }
 
         this.hotKey = function (ev){
+            if(editSheet) return;
             if(ev.ctrlKey && ev.key == 'c'){
                 ev.preventDefault();
                 models.copyHotKey();
@@ -111,7 +125,6 @@ export const Gantt = (function () {
                 models.clearSelectedContent();
                 models.clearSelectBox();
                 models.clearSelected();
-                models.deleteWorkSheet();
             } else if(ev.key == 'Escape'){
                 ev.preventDefault();
                 models.clearSelectBox();
@@ -266,6 +279,19 @@ export const Gantt = (function () {
             models.copyAttrs(target, controlList);
         }
 
+        this.popupControlSheet = function (ev){
+            const target = ev.target;
+            const closest = target.closest('.work');
+
+            if(document.querySelector('.sheet-list')) document.querySelector('.sheet-list').remove();
+
+            if(!closest) return;
+
+            ev.preventDefault();
+            editSheet = true;
+            models.popupControlSheet(closest, ev);
+        }
+
         this.popupControlList = function (ev){
             const target = ev.target;
             const closest = target.closest('th,td');
@@ -298,6 +324,7 @@ export const Gantt = (function () {
             }
 
             if(!closest) document.querySelectorAll('.control-list').forEach(el=>el.remove());
+            if(!closest) document.querySelectorAll('.sheet-list').forEach(el=>el.remove());
         }
 
         this.exportResult = function (ev){
@@ -561,18 +588,60 @@ export const Gantt = (function () {
             this.renderChart();
         }
 
-        this.deleteWorkSheet = function (){
+        this.saveWorkSheetName = function (target){
+            const input = document.querySelector('span.work input');
+            if(target == input) return;
+            if(!input) return;
+            const id = input.id;
+            
+            const [hasGantt, idx] = this.findGanttSheet(id);
+
+            gantt.title = input.value.trim();
+            ganttSheet[idx] = gantt;
+
+            this.renderChart();
+        }
+
+        this.workSheetBtn = function (closest, target){
+            switch(target.id){
+                case 'workRename':
+                    this.renameWork(closest.id);
+                    break;
+                case 'workRemove':
+                    this.removeWork(closest.id);
+                    break;
+            }
+        }
+
+        this.renameWork = function (id){
+            const ta = document.createElement('input');
+            const target = document.querySelector(`span#${id}`);
+            ta.id = id;
+            ta.value = target.innerHTML;
+            target.innerHTML = '';
+            target.append(ta);
+            ta.select();
+        }
+
+        this.removeWork = function (id){
+            let tempGantt;
             let ganttIdx = -1;
-            let answer = confirm(`"${gantt.title}" 시트를 삭제하시겠습니까?\n삭제 후 Redo로 되돌릴 수 있지만 새로고침 되면 복구 불가합니다.`);
             let hasGantt = ganttSheet.some((g, i)=>{
-                let isSame = g.id==gantt.id;
+                let isSame = g.id==id;
                 if(isSame) ganttIdx = i;
                 return isSame;
             });
 
-            if(hasGantt && answer){
-                ganttSheet.splice(ganttIdx, 1);
-                gantt = ganttSheet[ganttSheet.length-1];
+            if (ganttSheet.length == 1) return;
+
+            if (hasGantt) {
+                tempGantt = ganttSheet[ganttIdx];
+                let answer = confirm(`"${tempGantt.title}" 시트를 삭제하시겠습니까?\n삭제 후 Redo로 되돌릴 수 있지만 새로고침 되면 복구 불가합니다.`);
+                
+                if (answer) {
+                    ganttSheet.splice(ganttIdx, 1);
+                    gantt = ganttSheet[ganttSheet.length - 1];
+                }
             }
 
             this.renderChart();
@@ -652,6 +721,16 @@ export const Gantt = (function () {
 
             this.clearSelected();
             this.renderChart();
+        }
+
+        this.findGanttSheet = function (id){
+            let ganttIdx = -1;
+            let hasGantt = ganttSheet.some((g, i)=>{
+                let isSame = g.id==id;
+                if(isSame) ganttIdx = i;
+                return isSame;
+            });
+            return [hasGantt, ganttIdx];
         }
 
         this.findGantt = function (ganttType, {rowid, colid}){
@@ -1059,6 +1138,10 @@ export const Gantt = (function () {
             }
         };
 
+        this.popupControlSheet = function (closest, ev){
+            views.popupControlSheet(closest, closest.id);
+        }
+
         this.popupControlList = function (closest, ev){
             const {rowid, colid} = closest.attributes;
             const rowId = rowid.value;
@@ -1350,6 +1433,10 @@ export const Gantt = (function () {
             this.renderTable();
         }
 
+        this.popupControlSheet = function (closest, id){
+            parts.sheetList.render(closest, id);
+        }
+
         this.popupControlList = function (target, data, ev, isCopied, isContentsCopied){
             parts.controlList.render(target, data, ev, isCopied, isContentsCopied);
         }
@@ -1504,6 +1591,24 @@ export const Gantt = (function () {
                                 
                             </tbody>
                         </table>`);
+                    }
+                },
+                sheetList: {
+                    render(closest, id){
+                        const rect = closest.getBoundingClientRect();
+                        return ganttChart.insertAdjacentHTML('beforeend', `
+                            <ul
+                            id="${id}"
+                            class="sheet-list"
+                            style="
+                                position: absolute;
+                                top: ${rect.top - rect.height}px;
+                                left: ${rect.left}px;
+                            ">
+                                <button class="btn" id="workRename">rename</button>
+                                <button class="btn" id="workRemove">remove</button>
+                            </ul>
+                        `);
                     }
                 },
                 controlList: {
