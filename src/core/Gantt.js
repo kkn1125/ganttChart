@@ -51,7 +51,7 @@ export const Gantt = (function () {
             if(ev.key == 'Shift'){
                 shift = false;
                 document.querySelectorAll('.add-btn').forEach(el=>el.remove());
-            } else if(ev.ctrlKey){
+            } else if(ev.key == 'Control'){
                 multiple = false;
             }
         }
@@ -64,8 +64,14 @@ export const Gantt = (function () {
                     const mode = target.textContent.split(' ').pop();
                     document.querySelector('table#chart').style.tableLayout = mode;
                     break;
+                case 'addRowHead': case 'addRowBody':
+                    this.addInitialRow({target: target});
+                    break;
                 case 'selectAll':
                     models.selectAll();
+                    break;
+                case 'deleteAll':
+                    models.deleteAll();
                     break;
                 case 'devkimson':
                     window.open('https://github.com/kkn1125');
@@ -83,9 +89,17 @@ export const Gantt = (function () {
             } else if(ev.ctrlKey && ev.key == 'a'){
                 ev.preventDefault();
                 models.selectAll();
+            } else if(ev.ctrlKey && ev.key == 'Delete'){
+                ev.preventDefault();
+                models.deleteAll();
             } else if(ev.ctrlKey && ev.key == 'v'){
                 ev.preventDefault();
                 models.pasteHotKey();
+            } else if(ev.key == 'Delete'){
+                ev.preventDefault();
+                models.clearSelectedContent();
+                models.clearSelectBox();
+                models.clearSelected();
             } else if(ev.key == 'Escape'){
                 ev.preventDefault();
                 models.clearSelectBox();
@@ -116,8 +130,10 @@ export const Gantt = (function () {
                 mousedown = false;
                 return;
             }
-
-            if(mousedown) models.selectCell(closest);
+            
+            if(mousedown) {
+                models.selectCell(closest);
+            }
             mousedown = false;
             models.clearSelectBox();
         }
@@ -140,9 +156,13 @@ export const Gantt = (function () {
             if(!shift){
                 mousedown = true;
             }
-
+            if(target.closest('.control-list')){
+                mousedown = false;
+            }
             if(mousedown) {
-                if(!multiple) models.clearSelected();
+                if(!multiple && closest && ev.which == 1) {
+                    models.clearSelected();
+                }
                 models.selectReadyCell(closest);
                 models.renderSelectingBox(ev);
             }
@@ -150,6 +170,7 @@ export const Gantt = (function () {
 
         this.addInitialRow = function (ev){
             const target = ev.target;
+
             if(target.id!='addRowHead' && target.id!='addRowBody') return;
             
             if(target.id == 'addRowHead') models.addInitailRowHead();
@@ -354,11 +375,7 @@ export const Gantt = (function () {
                         }
                     }
 
-                    getTHTD.click();
-                    getTHTD.querySelector('textarea').focus();
-                    setTimeout(() => {
-                        getTHTD.querySelector('textarea').select();
-                    }, 0);
+                    this.toggleInput({target: getTHTD});
                 }
             }
         }
@@ -368,7 +385,7 @@ export const Gantt = (function () {
             const ta = document.createElement('textarea');
             const closests = target.closest('TD,TH');
 
-            models.clearSelected();
+            if(!target.closest('.control-list')) models.clearSelected();
 
             if(!closests) {
                 document.querySelectorAll('th.active, td.active').forEach(el=>{
@@ -451,9 +468,13 @@ export const Gantt = (function () {
             document.querySelectorAll('.add-btn').forEach(el=>el.remove());
 
             if(target.tagName != 'TD' && target.tagName != 'TH') {
+                hoverCell = null;
+                shift = false;
                 return;
             }
+
             hoverCell = target;
+
             if(shift && hoverCell) {
                 models.popupAddBtn(target);
                 // hoverCell = null;
@@ -500,17 +521,30 @@ export const Gantt = (function () {
             this.renderChart();
         }
 
+        this.clearSelectedContent = function (){
+            selected.map(s=>{
+                let rowid = parseInt(s.el.getAttribute('rowid'));
+                let colid = parseInt(s.el.getAttribute('colid'));
+                gantt[s.el.tagName=='TH'?'head':'body'][rowid][colid].text = '';
+            });
+
+            this.renderChart();
+        }
+
         this.copyHotKey = function (){
             this.clearCopiedAttrs();
 
+            if(selected.length==0) return;
+
             let copyTarget = selected[0];
-            console.log(copyTarget)
+
             const type = copyTarget.el.tagName;
             const {rowid, colid} = copyTarget.el.attributes;
             const ganttType = type=='TH'?'head':'body';
 
             copiedContents.text = gantt[ganttType][rowid.value][colid.value].text;
             Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
+            if(!copiedAttrs.hasOwnProperty('backgroundColor')) copiedAttrs['backgroundColor'] = '#ffffffff';
         }
 
         this.pasteHotKey = function (){
@@ -548,6 +582,7 @@ export const Gantt = (function () {
         this.selectCell = function (closest){
             // let end = this.findGantt(closest.tagName, closest.attributes);
             let start = selected.pop();
+            
             const endName = closest.tagName;
             const startName = start.el.tagName;
             const {rowid:endRowid, colid:endColid} = closest.attributes;
@@ -623,11 +658,21 @@ export const Gantt = (function () {
         }
 
         this.selectAll = function (){
-            selected = [];
+            this.clearSelected();
             document.querySelectorAll(`th, td`).forEach(el=>{
                 selected.push({el: el, obj:this.findGantt(el.tagName, el.attributes), rowid: parseInt(el.getAttribute('rowid')), colid: parseInt(el.getAttribute('colid'))})
                 el.classList.add('selected');
             });
+        }
+
+        this.deleteAll = function (){
+            this.clearSelected();
+            this.addHistory();
+
+            gantt.head = [];
+            gantt.body = [];
+
+            this.renderChart();
         }
 
         this.addHistory = function (){
@@ -1054,7 +1099,7 @@ export const Gantt = (function () {
         }
 
         this.addHeadRow = function(rowid){
-            let temp = {text: '', attr: {}};
+            let temp = {text: '', attr: {backgroundColor: '#ffffff'}};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
 
             temp.text = copiedContents.text;
@@ -1214,13 +1259,21 @@ export const Gantt = (function () {
             let height = ev.clientY - startTop;
             let width = ev.clientX - startLeft;
 
-            if(ev.clientY<startTop){
+            if(ev.clientY<=startTop){
+                selectBox.classList.add('dashed', 'flip');
                 selectBox.style.top = `${ev.clientY}px`;
                 selectBox.style.height = `${startTop - ev.clientY}px`;
+            } else {
+                selectBox.classList.remove('dashed');
+                selectBox.classList.remove('flip');
             }
-            if(ev.clientX<startLeft){
+            if(ev.clientX<=startLeft){
+                selectBox.classList.add('dashed', 'flip');
                 selectBox.style.left = `${ev.clientX}px`;
                 selectBox.style.width = `${startLeft - ev.clientX}px`;
+            } else {
+                selectBox.classList.remove('dashed');
+                selectBox.classList.remove('flip');
             }
 
             selectBox.style.width = `${width}px`;

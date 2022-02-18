@@ -20,6 +20,10 @@ const Menu = (function (){
                         id: 'selectAll',
                     },
                     {
+                        tab: 'delete all',
+                        id: 'deleteAll',
+                    },
+                    {
                         tab: 'layout auto',
                         id: 'layoutAuto',
                     },
@@ -33,10 +37,7 @@ const Menu = (function (){
                     },
                     {
                         tab: 'add body',
-                        id: 'addRowHead',
-                    },
-                    {
-                        tab: 'delete all',
+                        id: 'addRowBody',
                     },
                 ]
             },
