@@ -1356,7 +1356,7 @@ export const Gantt = (function () {
             const parts = {
                 table: {
                     render(target){
-                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout: fixed;border-collapse: collapse;width: 100%;border-spacing: 0;">
+                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout: auto;border-collapse: collapse;width: 100%;border-spacing: 0;">
                             <thead id="thead">
                                 
                             </thead>
