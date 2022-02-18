@@ -17,6 +17,8 @@ export const Gantt = (function () {
             models = model;
             
             window.addEventListener('click', this.tabExcute.bind(this));
+            window.addEventListener('click', this.selectWorkSheet);
+            window.addEventListener('click', this.deleteWorkSheet);
             
             window.addEventListener('keyup', this.cancelHotkey);
             window.addEventListener('keydown', this.hotKey.bind(this));
@@ -47,6 +49,12 @@ export const Gantt = (function () {
             window.addEventListener('keydown', this.inputKey.bind(this));
         }
 
+        this.selectWorkSheet = function (ev){
+            const target = ev.target;
+            if(!target.classList.contains('work')) return;
+            models.selectWorkSheet(target);
+        }
+
         this.cancelHotkey = function(ev) {
             if(ev.key == 'Shift'){
                 shift = false;
@@ -60,7 +68,7 @@ export const Gantt = (function () {
             const target = ev.target;
             
             switch(target.id){
-                case 'layoutAuto': case 'layoutFiexed':
+                case 'layoutAuto': case 'layoutFixed':
                     const mode = target.textContent.split(' ').pop();
                     document.querySelector('table#chart').style.tableLayout = mode;
                     break;
@@ -86,20 +94,24 @@ export const Gantt = (function () {
             if(ev.ctrlKey && ev.key == 'c'){
                 ev.preventDefault();
                 models.copyHotKey();
+            } else if(ev.ctrlKey && ev.key == 'v'){
+                ev.preventDefault();
+                models.pasteHotKey();
             } else if(ev.ctrlKey && ev.key == 'a'){
                 ev.preventDefault();
                 models.selectAll();
             } else if(ev.ctrlKey && ev.key == 'Delete'){
                 ev.preventDefault();
                 models.deleteAll();
-            } else if(ev.ctrlKey && ev.key == 'v'){
+            } else if(ev.key == 'F2'){
                 ev.preventDefault();
-                models.pasteHotKey();
+                this.toggleInput({target: hoverCell});
             } else if(ev.key == 'Delete'){
                 ev.preventDefault();
                 models.clearSelectedContent();
                 models.clearSelectBox();
                 models.clearSelected();
+                models.deleteWorkSheet();
             } else if(ev.key == 'Escape'){
                 ev.preventDefault();
                 models.clearSelectBox();
@@ -490,12 +502,36 @@ export const Gantt = (function () {
         const copiedAttrs = {};
         const copiedContents = {text: ''};
         let views;
+        let ganttSheet = [];
+        let Sheet = ()=>{
+            return {
+                id: new Date().getTime().toString(36),
+                head: [
+                    [
+                        {
+                            text: 'Hello',
+                            attr: {backgroundColor: '#ffffffff', fontSize: '20px'},
+                        }
+                    ],
+                ],
+                body: [
+                    [
+                        {
+                            text: 'Master 🙇‍♂️',
+                            attr: {backgroundColor: '#ffffffff'},
+                        }
+                    ],
+                ],
+                regdate: new Date().getTime(),
+            }
+        };
         let gantt = {
+            id: new Date().getTime().toString(36),
             head: [
                 [
                     {
-                        text: '헤드 부분입니다.',
-                        attr: {fontSize: '32px'},
+                        text: '헤드 부분입니다.\n헤드와 바디 경계선은 구분 짓기 위함입니다.\n내보내기하면 구분선 제외하고 복사됩니다.',
+                        attr: {backgroundColor: '#ffffffff', fontSize: '20px'},
                     }
                 ],
             ],
@@ -503,10 +539,11 @@ export const Gantt = (function () {
                 [
                     {
                         text: '바디 부분입니다.',
-                        attr: {},
+                        attr: {backgroundColor: '#ffffffff'},
                     }
                 ],
             ],
+            regdate: new Date().getTime(),
         };
         let history = [];
         let hisIndex = 0;
@@ -517,7 +554,53 @@ export const Gantt = (function () {
 
             gantt = this.getStorage();
 
+            ganttSheet = this.getSheetStorage();
+
             this.addHistory();
+
+            this.renderChart();
+        }
+
+        this.deleteWorkSheet = function (){
+            let ganttIdx = -1;
+            let answer = confirm(`"${gantt.title}" 시트를 삭제하시겠습니까?\n삭제 후 Redo로 되돌릴 수 있지만 새로고침 되면 복구 불가합니다.`);
+            let hasGantt = ganttSheet.some((g, i)=>{
+                let isSame = g.id==gantt.id;
+                if(isSame) ganttIdx = i;
+                return isSame;
+            });
+
+            if(hasGantt && answer){
+                ganttSheet.splice(ganttIdx, 1);
+                gantt = ganttSheet[ganttSheet.length-1];
+            }
+
+            this.renderChart();
+        }
+
+        this.selectWorkSheet = function (work){
+            let ganttIdx = -1;
+            let workIdx = -1;
+            let hasGantt = ganttSheet.some((g, i)=>{
+                let isSame = g.id==gantt.id;
+                if(isSame) ganttIdx = i;
+                return isSame;
+            });
+
+            let hasWork = ganttSheet.some((g, i)=>{
+                let isSame = g.id==work.id;
+                if(isSame) workIdx = i;
+                return isSame;
+            });
+
+            if(hasGantt) ganttSheet[ganttIdx] = gantt;
+
+            if(hasWork) gantt = ganttSheet[workIdx];
+            if(!hasWork && work.classList.contains('add-work')){
+                gantt = Sheet();
+                gantt.title = `Sheet ${ganttSheet.length+1}`;
+                ganttSheet.push(gantt);
+            }
 
             this.renderChart();
         }
@@ -577,11 +660,10 @@ export const Gantt = (function () {
 
         this.clearSelected = function(){
             selected = [];
-            document.querySelectorAll('.selected').forEach(el=>el.classList.remove('selected'));
+            document.querySelectorAll('.selected:not(.work)').forEach(el=>el.classList.remove('selected'));
         }
 
         this.selectCell = function (closest){
-            // let end = this.findGantt(closest.tagName, closest.attributes);
             let start = selected.pop();
             
             const endName = closest.tagName;
@@ -706,6 +788,7 @@ export const Gantt = (function () {
                 gantt = history[hisIndex];
                 this.setStorage(gantt);
                 views.renderChart(gantt);
+                views.renderSheets(ganttSheet, gantt.id);
             }
         }
 
@@ -715,6 +798,7 @@ export const Gantt = (function () {
                 gantt = history[hisIndex];
                 this.setStorage(gantt);
                 views.renderChart(gantt);
+                views.renderSheets(ganttSheet, gantt.id);
             }
         }
 
@@ -900,6 +984,7 @@ export const Gantt = (function () {
             this.addHistory();
             this.setStorage(gantt);
             views.renderChart(gantt);
+            views.renderSheets(ganttSheet, gantt.id);
         }
 
         this.autoAttrsApply = function(target, selects){
@@ -988,10 +1073,29 @@ export const Gantt = (function () {
             views.popupControlList(closest, originData, ev, Object.keys(copiedAttrs).length, copiedContents.text!='');
         }
 
+        this.getSheetStorage = function (){
+            let temp;
+            if(!localStorage['ganttSheet']) this.setSheetStorage(ganttSheet);
+            if(localStorage['ganttSheet']) temp = JSON.parse(localStorage['ganttSheet']);
+            
+            if(temp.length==0 && gantt) {
+                temp.push(gantt);
+                this.setSheetStorage(temp);
+            }
+
+            return temp;
+        }
+
+        this.setSheetStorage = function (data){
+            localStorage['ganttSheet'] = JSON.stringify(data);
+        }
+
         this.getStorage = function(){
             let temp;
-            if(!localStorage['gantt']) this.setStorage(gantt);
+            if(!localStorage['gantt']) this.setStorage(Sheet());
             if(localStorage['gantt']) temp = JSON.parse(localStorage['gantt']);
+            
+            temp = this.validGantt(temp);
             temp.head.map(row=>{
                 return row.map(col=>{
                     delete col.attr['[object HTMLInputElement]'];
@@ -1014,6 +1118,26 @@ export const Gantt = (function () {
 
         this.setStorage = function(data){
             localStorage['gantt'] = JSON.stringify(data);
+        }
+
+        this.validGantt = function (temp){
+            if(!temp.hasOwnProperty('title')){
+                temp.title = `Sheet ${ganttSheet.length+1}`;
+            }
+            if(!temp.hasOwnProperty('id')){
+                temp.id = new Date().getTime().toString(36);
+            }
+            if(!temp.hasOwnProperty('regdate')){
+                temp.regdate = new Date().getTime();
+            }
+            if(!temp.hasOwnProperty('head')){
+                temp.head = [];
+            }
+            if(!temp.hasOwnProperty('body')){
+                temp.body = [];
+            }
+
+            return temp;
         }
 
         this.exportResult = function (target){
@@ -1210,8 +1334,10 @@ export const Gantt = (function () {
         }
 
         this.renderChart = function () {
+            this.setSheetStorage(ganttSheet);
             this.setStorage(gantt);
             views.renderChart(gantt);
+            views.renderSheets(ganttSheet, gantt.id);
         }
     }
 
@@ -1332,6 +1458,20 @@ export const Gantt = (function () {
                 });
                 tbody.append(tr);
             });
+        }
+
+        this.renderSheets = function (sheets, id){
+            this.clearSheetBar();
+
+            sheets.forEach(sh=>{
+                document.querySelector('.work-tabs').insertAdjacentHTML('beforeend', `<span id="${sh.id}" class="work${sh.id==id?' selected':''}">${sh.title}</span>`);
+            });
+
+            document.querySelector('.work-tabs').insertAdjacentHTML('beforeend', `<span class="work add-work">+</span>`);
+        }
+
+        this.clearSheetBar = function (){
+            document.querySelectorAll('.work').forEach(el=>el?.remove());
         }
 
         this.clearControlList = function (){
@@ -1656,7 +1796,10 @@ export const Gantt = (function () {
                 delBtn: {
                     render(target, {rowid, colid}, rect, control){
                         const tableTop = target.closest('table').offsetTop;
-                        const tableleft = target.closest('table').offsetleft;
+                        const tableLeft = target.closest('table').offsetLeft;
+                        let heightGap = parseInt(target.closest('table').clientTop);
+                        let widthGap = parseInt(target.closest('table').clientTop);
+
                         if(control>0)
                         ganttChart.insertAdjacentHTML('beforeend',
                         (control%2!=0?`<span
@@ -1667,9 +1810,9 @@ export const Gantt = (function () {
                         colId="${colid.value}"
                         style="
                         width: ${rect.width}px;
-                        top: ${tableTop}px;
-                        left: ${rect.right - target.clientWidth/2}px;
-                        transform: translate(-50%, -100%);
+                        top: ${tableTop + heightGap}px;
+                        left: ${rect.right}px;
+                        transform: translate(-100%, -100%);
                         ">
                             ❌
                         </span>
@@ -1682,9 +1825,9 @@ export const Gantt = (function () {
                         colId="${colid.value}"
                         style="
                         height: ${rect.height}px;
-                        top: ${target.offsetTop + target.clientHeight/2}px;
-                        left: ${tableleft}px;
-                        transform: translate(-100%, -50%);
+                        top: ${rect.top}px;
+                        left: ${tableLeft + widthGap}px;
+                        transform: translate(-100%, 0%);
                         ">
                             ❌
                         </span>`.replace(/[\s]+/g, ' '):''));
