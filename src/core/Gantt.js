@@ -11,16 +11,19 @@ export const Gantt = (function () {
     textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false;
 
         this.init = function (model) {
             models = model;
-
+            
+            window.addEventListener('click', this.tabExcute.bind(this));
+            
             window.addEventListener('keyup', this.cancelHotkey);
-            window.addEventListener('keydown', this.hotKey);
+            window.addEventListener('keydown', this.hotKey.bind(this));
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
             window.addEventListener('mouseup', this.selectCell);
+            window.addEventListener('mousemove', this.selectingCell);
             window.addEventListener('mousedown', this.selectReadyCell);
             window.addEventListener('click', this.addInitialRow);
             window.addEventListener('click', this.borderReset);
@@ -47,20 +50,59 @@ export const Gantt = (function () {
         this.cancelHotkey = function(ev) {
             if(ev.key == 'Shift'){
                 shift = false;
+                document.querySelectorAll('.add-btn').forEach(el=>el.remove());
+            } else if(ev.ctrlKey){
+                multiple = false;
+            }
+        }
+
+        this.tabExcute = function(ev){
+            const target = ev.target;
+            
+            switch(target.id){
+                case 'layoutAuto': case 'layoutFiexed':
+                    const mode = target.textContent.split(' ').pop();
+                    document.querySelector('table#chart').style.tableLayout = mode;
+                    break;
+                case 'selectAll':
+                    models.selectAll();
+                    break;
+                case 'devkimson':
+                    window.open('https://github.com/kkn1125');
+                    break;
+                case 'ganttChart':
+                    window.open('https://github.com/kkn1125/ganttChart');
+                    break;
             }
         }
 
         this.hotKey = function (ev){
-            const target = ev.target;
-
-            if(ev.key == 'c' && ev.ctrlKey){
+            if(ev.ctrlKey && ev.key == 'c'){
+                ev.preventDefault();
                 models.copyHotKey();
-            } else if(ev.key == 'v' && ev.ctrlKey){
+            } else if(ev.ctrlKey && ev.key == 'a'){
+                ev.preventDefault();
+                models.selectAll();
+            } else if(ev.ctrlKey && ev.key == 'v'){
+                ev.preventDefault();
                 models.pasteHotKey();
             } else if(ev.key == 'Escape'){
+                ev.preventDefault();
+                models.clearSelectBox();
                 models.clearSelected();
             } else if(ev.key == 'Shift'){
-                if(!shift) shift = true;
+                ev.preventDefault();
+                models.clearSelected();
+                models.clearSelectBox();
+                mousedown = false;
+                if(!shift) {
+                    shift = true;
+                    if(hoverCell){
+                        this.popupAddBtn({target: hoverCell});
+                    }
+                }
+            } else if(ev.ctrlKey){
+                multiple = true;
             }
         }
 
@@ -69,10 +111,21 @@ export const Gantt = (function () {
             const closest = target.closest('th,td,.control-list');
 
             if(!closest) {
+                models.clearSelectBox();
                 models.clearSelected();
+                mousedown = false;
                 return;
             }
-            if(shift && mousedown) models.selectCell(closest);
+
+            if(mousedown) models.selectCell(closest);
+            mousedown = false;
+            models.clearSelectBox();
+        }
+
+        this.selectingCell = function (ev){
+            const target = ev.target;
+            if(!mousedown) return;
+            models.controlSelectingBox(ev);
         }
 
         this.selectReadyCell = function (ev){
@@ -83,9 +136,15 @@ export const Gantt = (function () {
                 models.clearSelected();
                 return;
             }
-            if(shift) {
+
+            if(!shift){
                 mousedown = true;
+            }
+
+            if(mousedown) {
+                if(!multiple) models.clearSelected();
                 models.selectReadyCell(closest);
+                models.renderSelectingBox(ev);
             }
         }
 
@@ -309,6 +368,8 @@ export const Gantt = (function () {
             const ta = document.createElement('textarea');
             const closests = target.closest('TD,TH');
 
+            models.clearSelected();
+
             if(!closests) {
                 document.querySelectorAll('th.active, td.active').forEach(el=>{
                     if(el!=closests){
@@ -386,15 +447,20 @@ export const Gantt = (function () {
         this.popupAddBtn = function (ev){
             const target = ev.target;
 
-            if(!target.classList.contains('add-btn') && document.querySelector('.add-btn')) document.querySelectorAll('.add-btn').forEach(el=>{
-                el.remove();
-            })
+            if(!target.classList.contains('add-btn') && document.querySelector('.add-btn'))
+            document.querySelectorAll('.add-btn').forEach(el=>el.remove());
 
             if(target.tagName != 'TD' && target.tagName != 'TH') {
                 return;
             }
+            hoverCell = target;
+            if(shift && hoverCell) {
+                models.popupAddBtn(target);
+                // hoverCell = null;
+                return;
+            }
             
-            if(!shift) models.popupAddBtn(target);
+            if(shift && hoverCell) models.popupAddBtn(target);
         }
     }
 
@@ -537,11 +603,31 @@ export const Gantt = (function () {
             });
         }
 
+        this.clearSelectBox = function (){
+            views.clearSelectBox();
+        }
+
+        this.controlSelectingBox = function (ev){
+            views.controlSelectingBox(ev);
+        }
+
+        this.renderSelectingBox = function (ev){
+            views.renderSelectingBox(ev);
+        }
+
         this.selectReadyCell = function (closest){
             let found = this.findGantt(closest.tagName, closest.attributes);
             let {rowid, colid} = closest.attributes;
             let [row, col] = [parseInt(rowid.value), parseInt(colid.value)];
             selected.push({el:closest, obj:found, rowid: row, colid: col});
+        }
+
+        this.selectAll = function (){
+            selected = [];
+            document.querySelectorAll(`th, td`).forEach(el=>{
+                selected.push({el: el, obj:this.findGantt(el.tagName, el.attributes), rowid: parseInt(el.getAttribute('rowid')), colid: parseInt(el.getAttribute('colid'))})
+                el.classList.add('selected');
+            });
         }
 
         this.addHistory = function (){
@@ -887,17 +973,8 @@ export const Gantt = (function () {
         this.exportResult = function (target){
             const ganttBody = document.querySelector("#gantt #chart");
             
-            ganttBody.style.borderCollapse = `collapse`;
-            ganttBody.style.width = '100%';
-
-            ganttBody.querySelectorAll('th,td').forEach(el=>{
-                el.style.userSelect = `none`;
-                el.style.padding = `0.5rem`;
-                el.style.position = 'relative';
-            });
-
             navigator.clipboard.writeText(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' ')).then(
-            clipText =>  console.log(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' '),'를 복사했습니다'));
+            clipText => {/** console.log(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' '),'를 복사했습니다') */});
         }
 
         this.autoValueChange = function (target){
@@ -1093,7 +1170,7 @@ export const Gantt = (function () {
     }
 
     function View() {
-        let parts, chart, thead, tbody, temp, isMoved;
+        let parts, chart, thead, tbody, temp, isMoved, selectBox, startTop, startLeft;
 
         this.init = function (part) {
             parts = part;
@@ -1122,9 +1199,42 @@ export const Gantt = (function () {
         this.popupAddBtn = function (target, rect){
             if(target.id!='addBtn') temp = rect;
             isMoved = target;
-            setTimeout(()=>{
-                if(isMoved == target) parts.addBtn.render(target, target.attributes, temp);
-            }, 200);
+            
+            if(isMoved == target) parts.addBtn.render(target, target.attributes, temp);
+        }
+
+        this.clearSelectBox = function (){
+            selectBox = null;
+            startTop = null;
+            startLeft = null;
+            document.querySelectorAll('.select-box').forEach(s=>s.remove());
+        }
+
+        this.controlSelectingBox = function (ev){
+            let height = ev.clientY - startTop;
+            let width = ev.clientX - startLeft;
+
+            if(ev.clientY<startTop){
+                selectBox.style.top = `${ev.clientY}px`;
+                selectBox.style.height = `${startTop - ev.clientY}px`;
+            }
+            if(ev.clientX<startLeft){
+                selectBox.style.left = `${ev.clientX}px`;
+                selectBox.style.width = `${startLeft - ev.clientX}px`;
+            }
+
+            selectBox.style.width = `${width}px`;
+            selectBox.style.height = `${height}px`;
+        }
+
+        this.renderSelectingBox = function (ev){
+            selectBox = document.createElement('span');
+            selectBox.classList.add('select-box');
+            selectBox.style.top = `${ev.clientY}px`;
+            selectBox.style.left = `${ev.clientX}px`;
+            startTop = ev.clientY;
+            startLeft = ev.clientX;
+            document.querySelector('#gantt').insertAdjacentElement('beforeend',selectBox);
         }
 
         this.renderChart = function (gantt) {
