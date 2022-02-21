@@ -21,7 +21,7 @@ export const Gantt = (function () {
     };
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false, handMode=false, selectCount=0;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false, handMode=false, selectCount=0, cellEdit=false;
 
         this.init = function (model) {
             models = model;
@@ -30,7 +30,7 @@ export const Gantt = (function () {
             window.addEventListener('keydown', this.hotKey.bind(this));
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
-            document.body.addEventListener('mouseleave', this.browserLeave);
+            document.body.addEventListener('mouseleave', this.browserLeave.bind(this));
             window.addEventListener('mouseup', this.selectCell);
             window.addEventListener('mousemove', this.selectingCell);
             window.addEventListener('mousedown', this.selectReadyCell);
@@ -67,11 +67,13 @@ export const Gantt = (function () {
         }
 
         this.browserLeave = function (ev){
-            const target = ev.target;
-            
+            let parent;
+            const target = document.querySelector('textarea');
+            if(target) parent = target.closest('th,td');
+            cellEdit = false;
+            if(target) this.saveContent(target, parent);
             models.clearpopupHotkey();
             models.removeHandMode();
-            models.clearSelectedContent();
             models.clearSelectBox();
             models.clearSelected();
             document.querySelectorAll('.control-list').forEach(el=>{
@@ -139,6 +141,7 @@ export const Gantt = (function () {
             } else if(ev.key == 'Control'){
                 multiple = false;
             } else if(ev.code == 'Space'){
+                if(cellEdit) return;
                 ev.preventDefault();
                 handMode = false;
                 ganttWorkSpace.classList.remove('handMode');
@@ -211,7 +214,7 @@ export const Gantt = (function () {
             } else if(ev.ctrlKey && ev.key == 'v'){
                 ev.preventDefault();
                 models.pasteHotKey();
-            } else if(ev.ctrlKey && ev.key == 'a'){
+            } else if(ev.ctrlKey && ev.key == 'a' && !cellEdit){
                 ev.preventDefault();
                 selectCount = 0;
                 models.selectAll();
@@ -219,13 +222,14 @@ export const Gantt = (function () {
                 ev.preventDefault();
                 models.deleteAll();
             } else if(ev.code == 'Space'){
+                if(cellEdit) return; 
                 ev.preventDefault();
                 if(!handMode) {
                     handMode = true;
                     models.handMode();
                 }
             } else if(ev.key == 'F2'){
-                ev.preventDefault();
+                ev.preventDefault();  
                 this.toggleInput({target: models.getSelected()});
             } else if(ev.key == 'Delete'){
                 ev.preventDefault();
@@ -234,6 +238,7 @@ export const Gantt = (function () {
                 models.clearSelected();
             } else if(ev.key == 'Escape'){
                 ev.preventDefault();
+                cellEdit = false;
                 models.clearSelectBox();
                 models.clearSelected();
                 document.querySelector('.popup-hotkey')?.remove();
@@ -333,14 +338,14 @@ export const Gantt = (function () {
         }
 
         this.workUndo = function (ev){
-            if(ev.code == 'Space') ev.preventDefault();
+            if(ev.code == 'Space' && !cellEdit) ev.preventDefault();
             if(!(ev.key=='z' && ev.ctrlKey)) return;
             
             models.workUndo();
         }
 
         this.workRedo = function (ev){
-            if(ev.code == 'Space') ev.preventDefault();
+            if(ev.code == 'Space' && !cellEdit) ev.preventDefault();
             if(!(ev.key=='y' && ev.ctrlKey)) return;
 
             models.workRedo();
@@ -511,7 +516,7 @@ export const Gantt = (function () {
             }
 
             if(target.tagName != 'TEXTAREA') return;
-
+            cellEdit = false;
             models.autoValueChange(target);
         }
 
@@ -543,6 +548,7 @@ export const Gantt = (function () {
                 if(ev.key == 'Escape'){
                     this.cancelContent(parent);
                 } else if(ev.ctrlKey && ev.key == 'Enter'){
+                    cellEdit = false;
                     this.saveContent(target, parent);
                 } else if(ev.key == 'Tab'){
                     ev.preventDefault();
@@ -577,7 +583,6 @@ export const Gantt = (function () {
         this.toggleInput = function (ev){
             const target = ev.target;
             if(!target) return;
-            
             const ta = document.createElement('textarea');
             const closests = target.closest('TD,TH');
 
@@ -594,6 +599,7 @@ export const Gantt = (function () {
                         toggler = false;
                     }
                 });
+                cellEdit = false;
                 return;
             }
 
@@ -604,6 +610,7 @@ export const Gantt = (function () {
                         el.innerHTML = textEdit.taToHTML(el.querySelector('textarea').value);
                     }
                     toggler = false;
+                    cellEdit = false;
                 }
             });
 
@@ -623,6 +630,7 @@ export const Gantt = (function () {
                 save.insertAdjacentElement('beforeend', ta);
                 ta.focus();
                 ta.select();
+                cellEdit = true;
             } else {
                 ta.remove();
                 save = null;
