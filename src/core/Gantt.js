@@ -1,4 +1,7 @@
+console.warn(`[GanttChart] 현재 버전 : v0.2.4`);
 export const Gantt = (function () {
+    const ganttWrap = document.querySelector('#ganttWrap');
+    const ganttWorkSpace = document.querySelector('.gantt-workspace');
     const ganttChart = document.querySelector('#gantt');
     const textEdit = {};
 
@@ -10,24 +13,36 @@ export const Gantt = (function () {
     textEdit.taToHTML = (ta) => textEdit.spaceToNbsp(textEdit.enterToBr(ta));
     textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
+    textEdit.camelToKebab = (str) => {
+        let firstLower;
+        let temp = str.match(/[A-Z][a-z]*/g);
+        if(temp) firstLower = str.split(temp[0])[0];
+        return ((firstLower?firstLower+'-':'')+str.match(/[A-Z][a-z]*/g)?.map(s=>s.toLowerCase()).join('-'))||str;
+    };
+
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false, handMode=false, selectCount=0;
 
         this.init = function (model) {
             models = model;
-            
-            window.addEventListener('click', this.tabExcute.bind(this));
-            window.addEventListener('click', this.selectWorkSheet);
-            window.addEventListener('click', this.deleteWorkSheet);
-            window.addEventListener('click', this.workSheetBtn);
             
             window.addEventListener('keyup', this.cancelHotkey);
             window.addEventListener('keydown', this.hotKey.bind(this));
             window.addEventListener('keydown', this.workRedo);
             window.addEventListener('keydown', this.workUndo);
+            document.body.addEventListener('mouseleave', this.browserLeave);
             window.addEventListener('mouseup', this.selectCell);
             window.addEventListener('mousemove', this.selectingCell);
             window.addEventListener('mousedown', this.selectReadyCell);
+            window.addEventListener('mouseup', this.removeGrabMode);
+            window.addEventListener('mousemove', this.grabMoveWindow);
+            window.addEventListener('mousedown', this.grabWindow);
+            window.addEventListener('click', this.cellConcat);
+            window.addEventListener('click', this.cellDivide);
+            window.addEventListener('click', this.clearpopupHotkey);
+            window.addEventListener('click', this.tabExcute.bind(this));
+            window.addEventListener('click', this.selectWorkSheet);
+            window.addEventListener('click', this.workSheetBtn);
             window.addEventListener('click', this.addInitialRow);
             window.addEventListener('click', this.borderReset);
             window.addEventListener('click', this.movingRowCol);
@@ -40,8 +55,8 @@ export const Gantt = (function () {
             window.addEventListener('click', this.exportResult);
             window.addEventListener('click', this.deleteRowCol);
             window.addEventListener('click', this.addRowCol);
-            window.addEventListener('dblclick', this.toggleInput);
             window.addEventListener('click', this.closePopupControlList);
+            window.addEventListener('dblclick', this.toggleInput);
             window.addEventListener('mouseover', this.popupDeleteBtn);
             window.addEventListener('mouseover', this.popupAddBtn);
             window.addEventListener('contextmenu', this.popupControlList);
@@ -51,19 +66,68 @@ export const Gantt = (function () {
             window.addEventListener('keydown', this.inputKey.bind(this));
         }
 
+        this.browserLeave = function (ev){
+            const target = ev.target;
+            
+            models.clearpopupHotkey();
+            models.removeHandMode();
+            models.clearSelectedContent();
+            models.clearSelectBox();
+            models.clearSelected();
+            document.querySelectorAll('.control-list').forEach(el=>{
+                el.classList.add('out');
+                setTimeout(() => {
+                    el.remove();
+                }, 500);
+            });
+            document.querySelectorAll('.sheet-list').forEach(el=>el.remove());
+        }
+
+        this.cellConcat = function (ev){
+            const target = ev.target;
+            const closest = target.closest('.control-list');
+
+            if(target.id!='cellConcat') return;
+            
+            models.cellConcat(closest);
+        }
+
+        this.cellDivide = function (ev){
+            const target = ev.target;
+            const closest = target.closest('.control-list');
+
+            if(target.id!='cellDivide') return;
+
+            models.cellDivide(closest);
+        }
+
+        this.clearpopupHotkey = function (ev){
+            const target = ev.target;
+            if(ev.which == 2) return;
+
+            if(target.closest('.popup-hotkey') && !target.classList.contains('del-popup')) return;
+            models.clearpopupHotkey();
+        }
+
         this.workSheetBtn = function (ev){
             const target = ev.target;
-            const closest = target.closest('.sheet-list');
+            const closest = target.closest('.sheet-list, .work input');
+            if(ev.which == 2) return;
+
             if(!closest) {
                 editSheet = false;
                 models.saveWorkSheetName(target);
                 return;
             }
+
+            editSheet = true;
             models.workSheetBtn(closest, target);
         }
 
         this.selectWorkSheet = function (ev){
             const target = ev.target;
+            if(ev.which == 2) return;
+
             if(!target.classList.contains('work')) return;
             models.selectWorkSheet(target);
         }
@@ -74,12 +138,17 @@ export const Gantt = (function () {
                 document.querySelectorAll('.add-btn').forEach(el=>el.remove());
             } else if(ev.key == 'Control'){
                 multiple = false;
+            } else if(ev.code == 'Space'){
+                ev.preventDefault();
+                handMode = false;
+                ganttWorkSpace.classList.remove('handMode');
             }
         }
 
         this.tabExcute = function(ev){
             const target = ev.target;
-            
+            if(ev.which == 2) return;
+
             switch(target.id){
                 case 'layoutAuto': case 'layoutFixed':
                     const mode = target.textContent.split(' ').pop();
@@ -100,11 +169,42 @@ export const Gantt = (function () {
                 case 'ganttChart':
                     window.open('https://github.com/kkn1125/ganttChart');
                     break;
+                case 'showKeyBinding':
+                    models.popupHotKeyList();
+                    break;
+                case 'penMode':
+                    handMode = !handMode;
+                    if(handMode) models.handMode();
+                    else models.removeHandMode();
+                    break;
             }
+        }
+
+        this.removeGrabMode = function (ev){
+            if(ev.which == 2) return;
+
+            if(!handMode) return;
+            models.removeGrabMode();
+        }
+
+        this.grabMoveWindow = function (ev){
+            if(ev.which == 2) return;
+
+            if(!handMode) return;
+            models.grabMoveWindow(ev);
+        }
+
+        this.grabWindow = function (ev){
+            if(ev.which == 2) return;
+
+            if(!handMode) return;
+            models.grabMode();
         }
 
         this.hotKey = function (ev){
             if(editSheet) return;
+            if(handMode) return;
+
             if(ev.ctrlKey && ev.key == 'c'){
                 ev.preventDefault();
                 models.copyHotKey();
@@ -113,13 +213,20 @@ export const Gantt = (function () {
                 models.pasteHotKey();
             } else if(ev.ctrlKey && ev.key == 'a'){
                 ev.preventDefault();
+                selectCount = 0;
                 models.selectAll();
             } else if(ev.ctrlKey && ev.key == 'Delete'){
                 ev.preventDefault();
                 models.deleteAll();
+            } else if(ev.code == 'Space'){
+                ev.preventDefault();
+                if(!handMode) {
+                    handMode = true;
+                    models.handMode();
+                }
             } else if(ev.key == 'F2'){
                 ev.preventDefault();
-                this.toggleInput({target: hoverCell});
+                this.toggleInput({target: models.getSelected()});
             } else if(ev.key == 'Delete'){
                 ev.preventDefault();
                 models.clearSelectedContent();
@@ -129,6 +236,8 @@ export const Gantt = (function () {
                 ev.preventDefault();
                 models.clearSelectBox();
                 models.clearSelected();
+                document.querySelector('.popup-hotkey')?.remove();
+                document.querySelectorAll('.control-list').forEach(el=>el.remove());
             } else if(ev.key == 'Shift'){
                 ev.preventDefault();
                 models.clearSelected();
@@ -148,6 +257,7 @@ export const Gantt = (function () {
         this.selectCell = function (ev){
             const target = ev.target;
             const closest = target.closest('th,td,.control-list');
+            if(ev.which == 2) return;
 
             if(!closest) {
                 models.clearSelectBox();
@@ -155,16 +265,25 @@ export const Gantt = (function () {
                 mousedown = false;
                 return;
             }
+
+            if(ev.which == 1){
+                selectCount = 0;
+            }
+
+            if(ev.which == 3){
+                selectCount = 1;
+            }
             
             if(mousedown) {
                 models.selectCell(closest);
             }
+
             mousedown = false;
             models.clearSelectBox();
         }
 
         this.selectingCell = function (ev){
-            const target = ev.target;
+            if(ev.which == 2) return;
             if(!mousedown) return;
             models.controlSelectingBox(ev);
         }
@@ -172,7 +291,8 @@ export const Gantt = (function () {
         this.selectReadyCell = function (ev){
             const target = ev.target;
             const closest = target.closest('th,td,.control-list');
-
+            if(ev.which == 2) return;
+            if(handMode) return;
             if(!closest) {
                 models.clearSelected();
                 return;
@@ -181,9 +301,19 @@ export const Gantt = (function () {
             if(!shift){
                 mousedown = true;
             }
+
             if(target.closest('.control-list')){
                 mousedown = false;
             }
+
+            if(ev.which == 3){
+                selectCount+=2;
+                if(selectCount>2) {
+                    selectCount = 0;
+                    models.clearSelected();
+                }
+            }
+
             if(mousedown) {
                 if(!multiple && closest && ev.which == 1) {
                     models.clearSelected();
@@ -203,12 +333,14 @@ export const Gantt = (function () {
         }
 
         this.workUndo = function (ev){
+            if(ev.code == 'Space') ev.preventDefault();
             if(!(ev.key=='z' && ev.ctrlKey)) return;
-
+            
             models.workUndo();
         }
 
         this.workRedo = function (ev){
+            if(ev.code == 'Space') ev.preventDefault();
             if(!(ev.key=='y' && ev.ctrlKey)) return;
 
             models.workRedo();
@@ -217,6 +349,8 @@ export const Gantt = (function () {
         this.borderReset = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id!='bReset') return;
 
             models.borderReset(target, controlList);
@@ -225,6 +359,7 @@ export const Gantt = (function () {
         this.movingRowCol = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
 
             if(!target.classList.contains('move')) return;
 
@@ -234,6 +369,8 @@ export const Gantt = (function () {
         this.emptyCopiedContents = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'clearContents') return;
 
             models.emptyCopiedContents(target, controlList);
@@ -242,6 +379,8 @@ export const Gantt = (function () {
         this.pasteCopiedContents = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'pasteContents') return;
 
             models.pasteCopiedContents(target, controlList);
@@ -250,6 +389,8 @@ export const Gantt = (function () {
         this.copyContents = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'copyContents') return;
 
             models.copyContents(target, controlList);
@@ -258,6 +399,8 @@ export const Gantt = (function () {
         this.emptyCopiedAttrs = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'clearAttrs') return;
 
             models.emptyCopiedAttrs(target, controlList);
@@ -266,6 +409,8 @@ export const Gantt = (function () {
         this.pasteCopiedAttrs = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'pasteAttrs') return;
 
             models.pasteCopiedAttrs(target, controlList);
@@ -274,6 +419,8 @@ export const Gantt = (function () {
         this.copyAttrs = function (ev){
             const target = ev.target;
             const controlList = target.closest('.control-list');
+            if(ev.which == 2) return;
+
             if(target.id != 'copyAttrs') return;
 
             models.copyAttrs(target, controlList);
@@ -281,7 +428,7 @@ export const Gantt = (function () {
 
         this.popupControlSheet = function (ev){
             const target = ev.target;
-            const closest = target.closest('.work');
+            const closest = target.closest('.work:not(.add-work)');
 
             if(document.querySelector('.sheet-list')) document.querySelector('.sheet-list').remove();
 
@@ -309,7 +456,8 @@ export const Gantt = (function () {
             const target = ev.target;
             const closest = target.closest('.control-list, textarea');
             // v0.2.1 셀 편집모드 내용 클릭 시 편집모드 종료되는 버그 수정 *textarea*
-            
+            if(ev.which == 2) return;
+
             if(!closest) {
                 document.querySelectorAll('th.active, td.active').forEach(el=>{
                     if(el!=closest){
@@ -323,12 +471,18 @@ export const Gantt = (function () {
                 });
             }
 
-            if(!closest) document.querySelectorAll('.control-list').forEach(el=>el.remove());
+            if(!closest && !handMode ) document.querySelectorAll('.control-list').forEach(el=>{
+                el.classList.add('out');
+                setTimeout(() => {
+                    el.remove();
+                }, 500);
+            });
             if(!closest) document.querySelectorAll('.sheet-list').forEach(el=>el.remove());
         }
 
         this.exportResult = function (ev){
             const target = ev.target;
+            if(ev.which == 2) return;
 
             tempRow = 0;
             tempCol = 0;
@@ -422,6 +576,8 @@ export const Gantt = (function () {
 
         this.toggleInput = function (ev){
             const target = ev.target;
+            if(!target) return;
+            
             const ta = document.createElement('textarea');
             const closests = target.closest('TD,TH');
 
@@ -475,6 +631,8 @@ export const Gantt = (function () {
 
         this.deleteRowCol = function (ev){
             const target = ev.target;
+            if(ev.which == 2) return;
+
             if(!target.classList.contains('del-btn')) return;
 
             models.deleteRowCol(target);
@@ -482,6 +640,8 @@ export const Gantt = (function () {
 
         this.addRowCol = function (ev){
             const target = ev.target;
+            if(ev.which == 2) return;
+
             if(!target.classList.contains('add-btn')) return;
 
             models.addRowCol(target);
@@ -528,6 +688,7 @@ export const Gantt = (function () {
     function Model() {
         const copiedAttrs = {};
         const copiedContents = {text: ''};
+        const maxHistory = 30;
         let views;
         let ganttSheet = [];
         let Sheet = ()=>{
@@ -537,7 +698,18 @@ export const Gantt = (function () {
                     [
                         {
                             text: 'Hello',
-                            attr: {backgroundColor: '#ffffffff', fontSize: '20px'},
+                            attr: {
+                                fontSize: '16px',
+                                width: 'auto',
+                                height: 'auto',
+                                padding: 'auto',
+                                border: 'auto',
+                                color: '#000000ff',
+                                backgroundColor: '#ffffffff',
+                                fontWeight: 'normal',
+                                textAlign: 'left',
+                                verticalAlign: 'middle',
+                            },
                         }
                     ],
                 ],
@@ -545,7 +717,18 @@ export const Gantt = (function () {
                     [
                         {
                             text: 'Master 🙇‍♂️',
-                            attr: {backgroundColor: '#ffffffff'},
+                            attr: {
+                                fontSize: '16px',
+                                width: 'auto',
+                                height: 'auto',
+                                padding: 'auto',
+                                border: 'auto',
+                                color: '#000000ff',
+                                backgroundColor: '#ffffffff',
+                                fontWeight: 'normal',
+                                textAlign: 'left',
+                                verticalAlign: 'middle',
+                            },
                         }
                     ],
                 ],
@@ -558,7 +741,18 @@ export const Gantt = (function () {
                 [
                     {
                         text: '헤드 부분입니다.\n헤드와 바디 경계선은 구분 짓기 위함입니다.\n내보내기하면 구분선 제외하고 복사됩니다.',
-                        attr: {backgroundColor: '#ffffffff', fontSize: '20px'},
+                        attr: {
+                            fontSize: '16px',
+                            width: 'auto',
+                            height: 'auto',
+                            padding: 'auto',
+                            border: 'auto',
+                            color: '#00000000',
+                            backgroundColor: '#ffffffff',
+                            fontWeight: 'normal',
+                            textAlign: 'left',
+                            verticalAlign: 'middel',
+                        },
                     }
                 ],
             ],
@@ -566,7 +760,18 @@ export const Gantt = (function () {
                 [
                     {
                         text: '바디 부분입니다.',
-                        attr: {backgroundColor: '#ffffffff'},
+                        attr: {
+                            fontSize: '16px',
+                            width: 'auto',
+                            height: 'auto',
+                            padding: 'auto',
+                            border: 'auto',
+                            color: '#00000000',
+                            backgroundColor: '#ffffffff',
+                            fontWeight: 'normal',
+                            textAlign: 'left',
+                            verticalAlign: 'middel',
+                        },
                     }
                 ],
             ],
@@ -583,9 +788,53 @@ export const Gantt = (function () {
 
             ganttSheet = this.getSheetStorage();
 
-            this.addHistory();
+            this.renderChartAddHistory();
+        }
 
-            this.renderChart();
+        this.cellConcat = function (closest){
+            const {rowid, colid} = closest.attributes;
+            console.log('합치기');
+        }
+
+        this.cellDivide = function (closest){
+            console.log('나누기');
+        }
+
+        this.removeGrabMode = function(){
+            ganttWorkSpace.classList.remove('grabMode');
+        }
+
+        this.grabMoveWindow = function(ev){
+            if(!ganttWorkSpace.classList.contains('grabMode')) return;
+            ganttWorkSpace.scrollTo({
+                top: ganttWorkSpace.scrollTop - ev.movementY,
+                left: ganttWorkSpace.scrollLeft - ev.movementX,
+                behavior: 'auto',
+            });
+        }
+
+        this.grabMode = function(){
+            ganttWorkSpace.classList.add('grabMode');
+        }
+
+        this.removeHandMode = function(){
+            ganttWorkSpace.classList.remove('handMode');
+        }
+
+        this.handMode = function(){
+            ganttWorkSpace.classList.add('handMode');
+        }
+
+        this.getSelected = function(){
+            return selected[0]?.el;
+        }
+
+        this.clearpopupHotkey = function (){
+            views.clearpopupHotkey();
+        }
+
+        this.popupHotKeyList = function(){
+            views.popupHotKeyList();
         }
 
         this.saveWorkSheetName = function (target){
@@ -596,10 +845,9 @@ export const Gantt = (function () {
             
             const [hasGantt, idx] = this.findGanttSheet(id);
 
-            gantt.title = input.value.trim();
-            ganttSheet[idx] = gantt;
+            ganttSheet[idx].title = input.value.trim();
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.workSheetBtn = function (closest, target){
@@ -644,7 +892,7 @@ export const Gantt = (function () {
                 }
             }
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.selectWorkSheet = function (work){
@@ -671,7 +919,7 @@ export const Gantt = (function () {
                 ganttSheet.push(gantt);
             }
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.clearSelectedContent = function (){
@@ -681,7 +929,7 @@ export const Gantt = (function () {
                 gantt[s.el.tagName=='TH'?'head':'body'][rowid][colid].text = '';
             });
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.copyHotKey = function (){
@@ -701,8 +949,6 @@ export const Gantt = (function () {
         }
 
         this.pasteHotKey = function (){
-            this.addHistory();
-
             selected.forEach(sel=>{
                 const copyTarget = sel.el;
                 const type = copyTarget.tagName;
@@ -718,9 +964,8 @@ export const Gantt = (function () {
                     gantt[ganttType][rowid.value][colid.value].attr[key] = val;
                 });
             });
-
             this.clearSelected();
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.findGanttSheet = function (id){
@@ -829,24 +1074,20 @@ export const Gantt = (function () {
 
         this.deleteAll = function (){
             this.clearSelected();
-            this.addHistory();
-
-            gantt.head = [];
-            gantt.body = [];
-
-            this.renderChart();
+            gantt.head = [[]];
+            gantt.body = [[]];
+            this.renderChartAddHistory();
         }
 
         this.addHistory = function (){
-            const head = [...gantt.head].map(h=>[...h].map(k=>{
-                const temp = {};
-                Object.entries(k.attr).forEach(([k,v])=>temp[k]=v);
-                return {
-                    text: k.text,
-                    attr: temp,
-                };
-            }));
-            const body = [...gantt.body].map(h=>[...h].map(k=>{
+            history = [...history].slice(0, hisIndex+1);
+            history.push(this.copyDeepGantt(gantt));
+            if(history.length>maxHistory) history.shift();
+            hisIndex = history.length-1;
+        }
+
+        this.copyDeepGantt = function(data){
+            const head = [...data.head].map(h=>[...h].map(k=>{
                 const temp = {};
                 Object.entries(k.attr).forEach(([k,v])=>temp[k]=v);
                 return {
@@ -855,29 +1096,37 @@ export const Gantt = (function () {
                 };
             }));
 
-            let temp = {head: head, body: body};
-            history.splice(hisIndex+1, 0, temp);
-            hisIndex = history.indexOf(temp)+1;
-            history = history.slice(0, hisIndex+1);
+            const body = [...data.body].map(h=>[...h].map(k=>{
+                const temp = {};
+                Object.entries(k.attr).forEach(([k,v])=>temp[k]=v);
+                return {
+                    text: k.text,
+                    attr: temp,
+                };
+            }));
+
+            return {
+                id: data.id,
+                title: data.title,
+                head: head,
+                body: body,
+                regdate: data.regdate,
+            }
         }
 
         this.workUndo = function (ev){
             if(hisIndex>0){
                 hisIndex--;
-                gantt = history[hisIndex];
-                this.setStorage(gantt);
-                views.renderChart(gantt);
-                views.renderSheets(ganttSheet, gantt.id);
+                gantt = this.copyDeepGantt(history[hisIndex]);
+                this.renderChart();
             }
         }
 
         this.workRedo = function (ev){
             if(hisIndex<history.length-1){
                 hisIndex++;
-                gantt = history[hisIndex];
-                this.setStorage(gantt);
-                views.renderChart(gantt);
-                views.renderSheets(ganttSheet, gantt.id);
+                gantt = this.copyDeepGantt(history[hisIndex]);
+                this.renderChart();
             }
         }
 
@@ -889,10 +1138,10 @@ export const Gantt = (function () {
                 temp.text = copiedContents.text;
                 gantt.head = [];
 
-                gantt.head.splice(0, 1, new Array(gantt.body[0]?gantt.body[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+                gantt.head.splice(0, 1, new Array(gantt.body[0].length>0?gantt.body[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
             }
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.addInitailRowBody = function (){
@@ -903,15 +1152,14 @@ export const Gantt = (function () {
                 temp.text = copiedContents.text;
                 gantt.body = [];
                 
-                gantt.body.splice(0, 1, new Array(gantt.head[0]?gantt.head[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+                gantt.body.splice(0, 1, new Array(gantt.head[0].length>0?gantt.head[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
             }
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.borderReset = function (target, controlList){
             const typeList = ['borderWidth', 'borderTopWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRightWidth', 'borderColor', 'borderTopColor', 'borderBottomColor', 'borderLeftColor', 'borderRightColor', 'borderStyle', 'borderTopStyle', 'borderBottomStyle', 'borderLeftStyle', 'borderRightStyle'];
-            this.addHistory();
 
             document.querySelectorAll('td,th').forEach(el=>{
                 typeList.forEach(type=>el.style[type] = '');
@@ -930,10 +1178,10 @@ export const Gantt = (function () {
                     return col;
                 });
             });
-            
+
             views.clearControlList();
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.movingRowCol = function (target, controlList){
@@ -943,8 +1191,6 @@ export const Gantt = (function () {
             const rowId = parseInt(rowid.value);
             const colId = parseInt(colid.value);
             const move = moving.value;
-
-            this.addHistory();
 
             switch(move){
                 case 'left':
@@ -975,7 +1221,7 @@ export const Gantt = (function () {
                     break;
             }
             
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.clearCopiedContents = function (){
@@ -984,7 +1230,7 @@ export const Gantt = (function () {
 
         this.emptyCopiedContents = function (target, controlList){
             views.clearControlList();
-            this.renderChart();
+            this.renderChartAddHistory();
             this.clearCopiedContents();
         }
 
@@ -993,15 +1239,13 @@ export const Gantt = (function () {
             const ganttType = type.value=='TH'?'head':'body';
             gantt[ganttType][rowid.value][colid.value].text = '';
 
-            this.addHistory();
-
             gantt[ganttType][rowid.value][colid.value].text = copiedContents.text;
 
             document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).innerHTML = copiedContents.text;
 
             views.clearControlList();
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.copyContents = function (target, controlList){
@@ -1013,7 +1257,7 @@ export const Gantt = (function () {
 
             views.clearControlList();
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.clearCopiedAttrs = function (){
@@ -1030,8 +1274,6 @@ export const Gantt = (function () {
             const ganttType = type.value=='TH'?'head':'body';
             gantt[ganttType][rowid.value][colid.value].attr = {};
 
-            this.addHistory();
-
             Object.entries(copiedAttrs).forEach(([key, val])=>{
                 gantt[ganttType][rowid.value][colid.value].attr[key] = val;
 
@@ -1039,8 +1281,7 @@ export const Gantt = (function () {
             })
 
             views.clearControlList();
-
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.copyAttrs = function (target, controlList){
@@ -1054,16 +1295,14 @@ export const Gantt = (function () {
         }
 
         this.autoAttrsValueChange = function (target){
+            
             if(selected.length>0)
             selected.forEach(sel=>{
                 this.autoAttrsApply(target, sel);
             });
             else this.autoAttrsApply(target);
-            
-            this.addHistory();
-            this.setStorage(gantt);
-            views.renderChart(gantt);
-            views.renderSheets(ganttSheet, gantt.id);
+
+            this.renderChartAddHistory();
         }
 
         this.autoAttrsApply = function(target, selects){
@@ -1161,7 +1400,7 @@ export const Gantt = (function () {
             if(!localStorage['ganttSheet']) this.setSheetStorage(ganttSheet);
             if(localStorage['ganttSheet']) temp = JSON.parse(localStorage['ganttSheet']);
             
-            if(temp.length==0 && gantt) {
+            if(!temp.some(g=>g.id==gantt.id)){
                 temp.push(gantt);
                 this.setSheetStorage(temp);
             }
@@ -1169,8 +1408,14 @@ export const Gantt = (function () {
             return temp;
         }
 
-        this.setSheetStorage = function (data){
-            localStorage['ganttSheet'] = JSON.stringify(data);
+        this.setSheetStorage = function (){
+            this.asyncGanttToSheet(gantt);
+            localStorage['ganttSheet'] = JSON.stringify(ganttSheet);
+        }
+
+        this.asyncGanttToSheet = function (){
+            const [has, idx] = this.findGanttSheet(gantt.id);
+            ganttSheet[idx] = gantt;
         }
 
         this.getStorage = function(){
@@ -1235,8 +1480,6 @@ export const Gantt = (function () {
             const value = target.value;
 
             const {rowid, colid} = parent.attributes;
-            
-            this.addHistory();
 
             if(parent.tagName == 'TH'){
                 gantt.head[rowid.value][colid.value].text = value;
@@ -1244,14 +1487,12 @@ export const Gantt = (function () {
                 gantt.body[rowid.value][colid.value].text = value;
             }
 
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.deleteRowCol = function (target) {
             const {type, rowid, colid, direction} = target.attributes;
             const dir = direction.value;
-
-            this.addHistory();
 
             if(dir=='row'){
                 if(type.value == 'TH') this.delHeadRow(rowid.value);
@@ -1261,24 +1502,30 @@ export const Gantt = (function () {
                 this.delBodyCol(colid.value);
             }
             
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.addRowCol = function (target) {
             const {type, rowid, colid, direction} = target.attributes;
             const dir = direction.value;
 
-            this.addHistory();
-
+            switch(dir){
+                case 'top': case 'bottom':
+                    if(type.value == 'TH') this.addHeadRow(rowid.value, dir);
+                    else this.addBodyRow(rowid.value, dir);
+                    break;
+                case 'left': case 'right':
+                    this.addHeadCol(colid.value, dir);
+                    this.addBodyCol(colid.value, dir);
+                    break;
+            }
             if(dir=='bottom'){
-                if(type.value == 'TH') this.addHeadRow(rowid.value);
-                else this.addBodyRow(rowid.value);
+                
             } else {
-                this.addHeadCol(colid.value);
-                this.addBodyCol(colid.value);
+                
             }
             
-            this.renderChart();
+            this.renderChartAddHistory();
         }
 
         this.delHeadRow = function(rowid){
@@ -1287,11 +1534,6 @@ export const Gantt = (function () {
         }
 
         this.delBodyRow = function(rowid){
-            if(selected.length>0){
-
-            } else {
-
-            }
             rowid = parseInt(rowid);
             gantt.body.splice(rowid, 1);
         }
@@ -1306,7 +1548,7 @@ export const Gantt = (function () {
             gantt.body.map(row=>row.splice(colid, 1));
         }
 
-        this.addHeadRow = function(rowid){
+        this.addHeadRow = function(rowid, dir){
             let temp = {text: '', attr: {backgroundColor: '#ffffff'}};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
 
@@ -1317,7 +1559,7 @@ export const Gantt = (function () {
 
             rowid = parseInt(rowid);
 
-            gantt.head.splice(rowid + 1, 0, [...gantt.head[rowid]].map((col, cid)=>{
+            gantt.head.splice((dir=='top'?rowid:rowid + 1), 0, [...gantt.head[rowid]].map((col, cid)=>{
                 let beforeCopy = {text: '', attr: {}};
                 Object.entries(col.attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
                 beforeCopy.text = col.text;
@@ -1327,7 +1569,7 @@ export const Gantt = (function () {
             }));
         }
 
-        this.addBodyRow = function(rowid){
+        this.addBodyRow = function(rowid, dir){
             let temp = {text: '', attr: {}};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
 
@@ -1338,7 +1580,7 @@ export const Gantt = (function () {
             
             rowid = parseInt(rowid);
 
-            gantt.body.splice(rowid + 1, 0, [...gantt.body[rowid]].map((col, cid)=>{
+            gantt.body.splice(dir=='top'?rowid:rowid + 1, 0, [...gantt.body[rowid]].map((col, cid)=>{
                 let beforeCopy = {text: '', attr: {}};
                 Object.entries(col.attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
                 beforeCopy.text = col.text;
@@ -1348,7 +1590,7 @@ export const Gantt = (function () {
             }));
         }
 
-        this.addHeadCol = function(colid){
+        this.addHeadCol = function(colid, dir){
             let temp = {text: '', attr: {}};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
 
@@ -1364,12 +1606,12 @@ export const Gantt = (function () {
                 Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
                 beforeCopy.text = row[colid].text;
 
-                row.splice(colid + 1, 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
+                row.splice((dir=='left'?colid:colid + 1), 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
                 return row;
             });
         }
 
-        this.addBodyCol = function(colid){
+        this.addBodyCol = function(colid, dir){
             let temp = {text: '', attr: {}};
             Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
 
@@ -1385,13 +1627,12 @@ export const Gantt = (function () {
                 Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
                 beforeCopy.text = row[colid].text;
 
-                row.splice(colid + 1, 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
+                row.splice((dir=='left'?colid:colid + 1), 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
                 return row;
             });
         }
 
         this.popupDeleteBtn = function (target){
-            const rect = target.getBoundingClientRect();
             let control = 3;
             switch(target.tagName){
                 case 'TH':
@@ -1407,16 +1648,19 @@ export const Gantt = (function () {
                     // else if(gantt.body.length>1 && gantt.body[0].length>1) control = 3;
                     break;
             }
-            views.popupDeleteBtn(target, rect, control);
+            views.popupDeleteBtn(target, control);
         }
 
         this.popupAddBtn = function (target){
-            const rect = target.getBoundingClientRect();
-
-            views.popupAddBtn(target, rect);
+            views.popupAddBtn(target);
         }
 
-        this.renderChart = function () {
+        this.renderChartAddHistory = function () {
+            this.addHistory();
+            this.renderChart();
+        }
+
+        this.renderChart = function (){
             this.setSheetStorage(ganttSheet);
             this.setStorage(gantt);
             views.renderChart(gantt);
@@ -1425,7 +1669,7 @@ export const Gantt = (function () {
     }
 
     function View() {
-        let parts, chart, thead, tbody, temp, isMoved, selectBox, startTop, startLeft;
+        let parts, chart, thead, tbody, isMoved, selectBox, startTop, startLeft;
 
         this.init = function (part) {
             parts = part;
@@ -1449,17 +1693,15 @@ export const Gantt = (function () {
             tbody = document.querySelector('#tbody');
         }
 
-        this.popupDeleteBtn = function(target, rect, control){
-            if(target.id!='delBtn') temp = rect;
+        this.popupDeleteBtn = function(target, control){
 
-            parts.delBtn.render(target, target.attributes, temp, control);
+            parts.delBtn.render(target, target.attributes, control);
         }
 
-        this.popupAddBtn = function (target, rect){
-            if(target.id!='addBtn') temp = rect;
+        this.popupAddBtn = function (target){
             isMoved = target;
             
-            if(isMoved == target) parts.addBtn.render(target, target.attributes, temp);
+            if(isMoved == target) parts.addBtn.render(target, target.attributes);
         }
 
         this.clearSelectBox = function (){
@@ -1475,8 +1717,8 @@ export const Gantt = (function () {
 
             if(ev.clientY<=startTop){
                 selectBox.classList.add('dashed', 'flip');
-                selectBox.style.top = `${ev.clientY}px`;
-                selectBox.style.height = `${startTop - ev.clientY}px`;
+                selectBox.style.top = `${ev.y}px`;
+                selectBox.style.height = `${startTop - ev.y}px`;
             } else {
                 selectBox.classList.remove('dashed');
                 selectBox.classList.remove('flip');
@@ -1501,23 +1743,22 @@ export const Gantt = (function () {
             selectBox.style.left = `${ev.clientX}px`;
             startTop = ev.clientY;
             startLeft = ev.clientX;
-            document.querySelector('#gantt').insertAdjacentElement('beforeend',selectBox);
+            document.querySelector('.gantt-workspace').insertAdjacentElement('beforeend',selectBox);
         }
 
         this.renderChart = function (gantt) {
             this.clearThead();
             this.clearTbody();
             this.clearBtns();
-
+            
             gantt.head?.forEach((rows, rowId)=>{
                 let tr = document.createElement('tr');
-
+                
                 rows.forEach((cols, colId)=>{
                     let th = document.createElement('th');
-
+                    
                     Object.entries(cols.attr).forEach(([key, val])=>{
-                        if(val != '')
-                        th.style[key] = val;
+                        if(val) th.style.setProperty(textEdit.camelToKebab(key), val, 'important');
                     });
 
                     th.innerHTML = textEdit.taToHTML(cols.text);
@@ -1535,8 +1776,7 @@ export const Gantt = (function () {
                     let td = document.createElement('td');
 
                     Object.entries(cols.attr).forEach(([key, val])=>{
-                        if(val != '' && val != undefined)
-                        td.style[key] = val;
+                        if(val) td.style.setProperty(textEdit.camelToKebab(key), val, 'important');
                     });
                     td.innerHTML = textEdit.taToHTML(cols.text);
                     td.setAttribute('rowId', rowId);
@@ -1557,6 +1797,15 @@ export const Gantt = (function () {
             document.querySelector('.work-tabs').insertAdjacentHTML('beforeend', `<span class="work add-work">+</span>`);
         }
 
+        this.popupHotKeyList = function(){
+            this.clearpopupHotkey();
+            document.body.insertAdjacentHTML('beforeend', parts.hotKeyList.render());
+        }
+
+        this.clearpopupHotkey = function (){
+            document.querySelectorAll('.popup-hotkey').forEach(el=>el?.remove());
+        }
+        
         this.clearSheetBar = function (){
             document.querySelectorAll('.work').forEach(el=>el?.remove());
         }
@@ -1583,7 +1832,7 @@ export const Gantt = (function () {
             const parts = {
                 table: {
                     render(target){
-                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout: auto;border-collapse: collapse;width: 100%;border-spacing: 0;">
+                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout:auto;border-collapse:collapse!important;width: 100%!important;border-spacing: 0!important;">
                             <thead id="thead">
                                 
                             </thead>
@@ -1596,7 +1845,7 @@ export const Gantt = (function () {
                 sheetList: {
                     render(closest, id){
                         const rect = closest.getBoundingClientRect();
-                        return ganttChart.insertAdjacentHTML('beforeend', `
+                        return ganttWrap.insertAdjacentHTML('beforeend', `
                             <ul
                             id="${id}"
                             class="sheet-list"
@@ -1617,7 +1866,7 @@ export const Gantt = (function () {
                     units: ['auto', 'px', 'cm', 'mm', 'in', 'pc', 'pt', 'ch', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax'],
                     getLastName(str){
                         if(str=='backgroundColor') return 'bgColor';
-                        return str.match(/\p{Lu}\p{Ll}+/gu)?.pop()||str.charAt(0).toUpperCase()+str.slice(1);
+                        return str.match(/[A-Z][a-z]*/g)?.pop()||str.charAt(0).toUpperCase()+str.slice(1);
                     },
                     getOpacity(id, data) {
                         return data.attr[id]?.slice(7, 9)||'ff';
@@ -1659,35 +1908,26 @@ export const Gantt = (function () {
                         return data.attr[id];
                     },
                     colorPannel(id, data) {
-                        return `<span class="w-flex flex-column justify-content-bottom gap-1">
-                            <label for="${id}">${this.getLastName(id)}</label>
-                            <span class="w-flex flex-column justify-content-end">
-                            <input type="color" id="${id}" class="form-input attrs" value="${this.getColor(id, data)}">
-                            <input type="range" step="1" min="0" max="255" class="form-input attrs p-0" id="${id}" value="${this.hexToNumber(id, data)}">
-                        </span></span>`;
+                        return `<input type="color" id="${id}" class="form-input attrs" value="${this.getColor(id, data)}">
+                        <input type="range" step="1" min="0" max="255" class="form-input attrs p-0" id="${id}" value="${this.hexToNumber(id, data)}">`;
                     },
                     widthPannel(id, data, target){
-                        return `<span class="w-flex flex-column justify-content-bottom gap-1">
-                            <label for="${id}">${this.getLastName(id)}</label>
-                            <span>
-                                <input type="number" class="form-input attrs" id="${id}" value="${this.getNumber(id, data, target)}" style="width: 70px;">
-                                <select id="${id}" class="form-input attrs" style="width: 75px;">
-                                    ${this.setNumberUnitList(this.getUnit(id, data))}
-                                </select>
-                            </span>
-                        </span>`;
+                        return `<span class="text-center">
+                        <input type="number" class="form-input attrs" id="${id}" value="${this.getNumber(id, data, target)}">
+                        <select id="${id}" class="form-input attrs">
+                            ${this.setNumberUnitList(this.getUnit(id, data))}
+                        </select>
+                    </span>`;
                     },
                     stylePannel(id, data){
-                        return `<span class="w-flex align-items-center">
-                        <select id="${id}" class="form-input attrs" style="width: 70px;">
+                        return `<select id="${id}" class="form-input attrs">
                         ${this.setBorderStyleList(this.getStyle(id, data))}
-                    </select></span>`;
+                    </select>`;
                     },
                     optionPannel(id, data){
-                        return `<span class="w-flex align-items-center">
-                        <select id="${id}" class="form-input attrs" style="width: 70px;">
+                        return `<select id="${id}" class="form-input attrs">
                         ${this.setOptionList(this.getOption(id, data))}
-                    </select></span>`;
+                    </select>`;
                     },
                     render(target, data, {x, y}, isCopied, isContentsCopied){
                         const {rowid, colid} = target.attributes;
@@ -1700,18 +1940,16 @@ export const Gantt = (function () {
                             x = x - 160;
                         }
 
-                        ganttChart.insertAdjacentHTML('beforeend', `
+                        // transform: translateY(0%);
+                        // top: ${y + document.body.scrollTop}px;
+                        // left: ${x}px;
+                        // ${window.innerWidth/2<x?'transform: translateX(-50%)':''}
+                        ganttWrap.insertAdjacentHTML('beforeend', `
                             <ul
                             type="${target.tagName}"
                             class="control-list"
                             rowid="${rowid.value}"
-                            colid="${colid.value}"
-                            style="
-                                transform: translateY(0%);
-                                top: ${y + document.body.scrollTop}px;
-                                left: ${x}px;
-                                ${window.innerWidth/2<x?'transform: translateX(-50%)':''}
-                            ">
+                            colid="${colid.value}">
                                 <li>
                                     <span>Contents Copy</span>
                                     <span class="tool-bundle">
@@ -1746,33 +1984,19 @@ export const Gantt = (function () {
                                     </span>
                                 </li>
                                 <li>
+                                    <span>Cell Concat & Divide</span>
+                                    <span class="tool-bundle" style="gap: .5rem;">
+                                        <button id="cellConcat" class="btn">셀 합치기</button>
+                                        <button id="cellDivide" class="btn">셀 나누기</button>
+                                    </span>
+                                </li>
+                                <li>
                                     <span>Apply To</span>
                                     <span class="tool-bundle">
                                         <label for="bRow">Rows</label>
                                         <input type="checkbox" class="" id="bRow">
                                         <label for="bCol">Cols</label>
                                         <input type="checkbox" class="" id="bCol">
-                                    </span>
-                                </li>
-                                <li>
-                                    <span>Width & Height</span>
-                                    <span class="tool-bundle">
-                                        ${this.widthPannel('width', data, target)}
-                                        ${this.widthPannel('height', data, target)}
-                                    </span>
-                                </li>
-                                <li>
-                                    <span>Padding All</span>
-                                    <br>
-                                    ${this.widthPannel('padding', data, target)}
-                                </li>
-                                <li>
-                                    <span>Padding</span>
-                                    <span class="tool-bundle-col">
-                                        ${this.widthPannel('paddingTop', data, target)}
-                                        ${this.widthPannel('paddingLeft', data, target)}
-                                        ${this.widthPannel('paddingRight', data, target)}
-                                        ${this.widthPannel('paddingBottom', data, target)}
                                     </span>
                                 </li>
                                 <li>
@@ -1786,29 +2010,85 @@ export const Gantt = (function () {
                                     </span>
                                 </li>
                                 <li>
-                                    <span>Border</span>
+                                    <span>Border Width</span>
                                     <br>
                                     <span class="w-flex flex-column justify-content-center gap-1">
-                                        <span class="tool-bundle">
-                                            ${this.widthPannel('borderTopWidth', data, target)}
-                                            ${this.stylePannel('borderTopStyle', data)}
-                                            ${this.colorPannel('borderTopColor', data)}
+                                        <span class="tool-bundle-col justify-content-center">
+                                            <span style="display: block;">
+                                                ${this.widthPannel('borderTopWidth', data, target)}
+                                            </span>
+                                            <span class="w-flex align-items-center">
+                                                ${this.widthPannel('borderLeftWidth', data, target)}
+                                                <span class="box"></span>
+                                                ${this.widthPannel('borderRightWidth', data, target)}
+                                            </span>
+                                            <span style="display: block;">
+                                                ${this.widthPannel('borderBottomWidth', data, target)}
+                                            </span>
                                         </span>
-                                        <span class="tool-bundle">
-                                            ${this.widthPannel('borderLeftWidth', data, target)}
-                                            ${this.stylePannel('borderLeftStyle', data)}
-                                            ${this.colorPannel('borderLeftColor', data)}
-                                        </span>
-                                        <span class="tool-bundle">
-                                            ${this.widthPannel('borderRightWidth', data, target)}
-                                            ${this.stylePannel('borderRightStyle', data)}
-                                            ${this.colorPannel('borderRightColor', data)}
-                                        </span>
-                                        <span class="tool-bundle">
-                                            ${this.widthPannel('borderBottomWidth', data, target)}
+                                    </span>
+                                </li>
+                                <li>
+                                    <span>Border Style</span>
+                                    <br>
+                                    <span class="w-flex flex-column justify-content-center gap-1">
+                                        <span class="tool-bundle-col justify-content-center">
+                                            <span>
+                                                ${this.stylePannel('borderTopStyle', data)}
+                                            </span>
+                                            <span class="w-flex align-items-center">
+                                                ${this.stylePannel('borderLeftStyle', data)}
+                                                <span class="box"></span>
+                                                ${this.stylePannel('borderRightStyle', data)}
+                                            </span>
+                                            <span style="display: block;">
+                                            </span>
                                             ${this.stylePannel('borderBottomStyle', data)}
+                                        </span>
+                                    </span>
+                                </li>
+                                <li>
+                                    <span>Border Color</span>
+                                    <br>
+                                    <span class="w-flex flex-column justify-content-center gap-1">
+                                        <span class="tool-bundle-col justify-content-center">
+                                            <span>
+                                                ${this.colorPannel('borderTopColor', data)}
+                                            </span>
+                                            <span class="w-flex align-items-center">
+                                                ${this.colorPannel('borderLeftColor', data)}
+                                                <span class="box"></span>
+                                                <span>
+                                                    ${this.colorPannel('borderRightColor', data)}
+                                                </span>
+                                            </span>
+                                            <span style="display: block;">
+                                            </span>
                                             ${this.colorPannel('borderBottomColor', data)}
                                         </span>
+                                    </span>
+                                </li>
+                                <li>
+                                    <span class="tool-bundle-col">
+                                        <label>Width ${this.widthPannel('width', data, target)}</label>
+                                        <label>Height ${this.widthPannel('height', data, target)}</label>
+                                    </span>
+                                </li>
+                                <li>
+                                    <span>Padding All</span>
+                                    <br>
+                                    ${this.widthPannel('padding', data, target)}
+                                </li>
+                                <li>
+                                    <span>Padding</span>
+                                    <span class="tool-bundle-col">
+                                        ${this.widthPannel('paddingTop', data, target)}
+                                        <span class="w-flex align-items-center">
+                                            ${this.widthPannel('paddingLeft', data, target)}
+                                            <span class="box"></span>
+                                            ${this.widthPannel('paddingRight', data, target)}
+                                        </span>
+                                        ${this.widthPannel('paddingBottom', data, target)}
                                     </span>
                                 </li>
                                 <li>
@@ -1825,9 +2105,8 @@ export const Gantt = (function () {
                                     <span>Font</span>
                                     <br>
                                     <span class="w-flex justify-content-center" style="gap:.3rem;">
+                                        ${this.widthPannel('fontSize', data, target)}
                                         <span>
-                                            <label for="fontWeight">Bold</label>
-                                            <br>
                                             <select id="fontWeight" class="form-input attrs">
                                                 <option${fontWeight=='lighter'?' selected':''} value="lighter">lighter</option>
                                                 <option${fontWeight=='normal'?' selected':''} value="normal">normal</option>
@@ -1835,7 +2114,6 @@ export const Gantt = (function () {
                                                 <option${fontWeight=='bolder'?' selected':''} value="bolder">bolder</option>
                                             </select>
                                         </span>
-                                        ${this.widthPannel('fontSize', data, target)}
                                     </span>
                                 </li>
                                 <li>
@@ -1868,9 +2146,23 @@ export const Gantt = (function () {
                     }
                 },
                 addBtn: {
-                    render(target, {rowid, colid}, rect){
+                    render(target, {rowid, colid}){
+                        const scale = 'scale(0.5)';
                         ganttChart.insertAdjacentHTML('beforeend',
                         `<span
+                        type="${target.tagName}"
+                        direction="left"
+                        class="add-btn"
+                        rowId="${rowid.value}"
+                        colId="${colid.value}"
+                        style="
+                        top: ${target.offsetTop + target.clientHeight/2}px;
+                        left: ${target.offsetLeft}px;
+                        transform: translate(-50%, -50%) ${scale};
+                        ">
+                            ➕
+                        </span>
+                        <span
                         type="${target.tagName}"
                         direction="right"
                         class="add-btn"
@@ -1878,8 +2170,21 @@ export const Gantt = (function () {
                         colId="${colid.value}"
                         style="
                         top: ${target.offsetTop + target.clientHeight/2}px;
-                        left: ${rect.right}px;
-                        transform: translate(-50%, -50%);
+                        left: ${target.offsetLeft + target.offsetWidth}px;
+                        transform: translate(-50%, -50%) ${scale};
+                        ">
+                            ➕
+                        </span>
+                        <span
+                        type="${target.tagName}"
+                        direction="top"
+                        class="add-btn"
+                        rowId="${rowid.value}"
+                        colId="${colid.value}"
+                        style="
+                        top: ${target.offsetTop}px;
+                        left: ${target.offsetLeft + target.clientWidth/2}px;
+                        transform: translate(-50%, -50%) ${scale};
                         ">
                             ➕
                         </span>
@@ -1890,34 +2195,35 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        top: ${target.offsetTop + rect.height}px;
-                        left: ${rect.right - (rect.width/2)}px;
-                        transform: translate(-50%, -50%);
+                        top: ${target.offsetTop + target.clientHeight}px;
+                        left: ${target.offsetLeft + target.clientWidth/2}px;
+                        transform: translate(-50%, -50%) ${scale};
                         ">
                             ➕
                         </span>`.replace(/[\s]+/g, ' '));
                     }
                 },
                 delBtn: {
-                    render(target, {rowid, colid}, rect, control){
+                    render(target, {rowid, colid}, control){
                         const tableTop = target.closest('table').offsetTop;
                         const tableLeft = target.closest('table').offsetLeft;
+                        let targetHeightGap = parseInt(target.clientTop);
                         let heightGap = parseInt(target.closest('table').clientTop);
                         let widthGap = parseInt(target.closest('table').clientTop);
 
                         if(control>0)
                         ganttChart.insertAdjacentHTML('beforeend',
-                        (control%2!=0?`<span
+                        ((control%2!=0?`<span
                         type="${target.tagName}"
                         direction="col"
                         class="del-btn"
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        width: ${rect.width}px;
-                        top: ${tableTop + heightGap}px;
-                        left: ${rect.right}px;
-                        transform: translate(-100%, -100%);
+                        width: ${target.clientWidth}px;
+                        top: ${tableTop + heightGap }px;
+                        left: ${widthGap/2 + target.offsetLeft + target.clientWidth/2}px;
+                        transform: translate(-50%, -100%);
                         ">
                             ❌
                         </span>
@@ -1929,13 +2235,66 @@ export const Gantt = (function () {
                         rowId="${rowid.value}"
                         colId="${colid.value}"
                         style="
-                        height: ${rect.height}px;
-                        top: ${rect.top}px;
+                        height: ${target.clientHeight}px;
+                        top: ${target.offsetTop + targetHeightGap}px;
                         left: ${tableLeft + widthGap}px;
                         transform: translate(-100%, 0%);
                         ">
                             ❌
-                        </span>`.replace(/[\s]+/g, ' '):''));
+                        </span>`:'')
+                        + `<span
+                        type="${target.tagName}"
+                        direction="col"
+                        class="del-btn"
+                        rowId="${rowid.value}"
+                        colId="${colid.value}"
+                        style="
+                        width: ${target.clientWidth}px;
+                        top: ${tableTop + target.closest('table').offsetHeight - heightGap/2}px;
+                        left: ${widthGap/2 + target.offsetLeft + target.clientWidth/2}px;
+                        transform: translate(-50%, 0%);
+                        ">
+                            ❌
+                        </span>
+                        `).replace(/[\s]+/g, ' '));
+                    }
+                },
+                hotKeyList: {
+                    render(){
+                        return `
+                            <div class="popup-hotkey">
+                                <div class="hotkey-wrap">
+                                    <div class="hotkey-head">
+                                        <span>Hot Key</span>
+                                        <span class="del-popup">&times;</span>
+                                    </div>
+                                    <div class="hotkey-body">
+                                        <div style="font-size: 1.2rem">단일 키</div>
+                                        <ul>
+                                            <li><kbd>esc</kbd> 셀 편집 취소, 선택 취소</li>
+                                            <li><kbd>tab</kbd> 다음 셀 편집모드 (마지막 컬럼에서는 다음 로우 첫 셀로 이동)</li>
+                                            <li><kbd>delete</kbd> 선택 셀 내용 모두 삭제</li>
+                                            <li><kbd>f2</kbd> 선택 셀 편집모드</li>
+                                        </ul>
+                                        <hr>
+                                        <div style="font-size: 1.2rem">ctrl 혼합 키</div>
+                                        <ul>
+                                            <li><kbd>ctrl</kbd> + <kbd>c</kbd> 복사</li>
+                                            <li><kbd>ctrl</kbd> + <kbd>v</kbd> 붙여넣기</li>
+                                            <li><kbd>ctrl</kbd> + <kbd>a</kbd> 전체 셀 선택</li>
+                                            <li><kbd>ctrl</kbd> + <kbd>delete</kbd> 전체 행, 열 삭제</li>
+                                            <li><kbd>ctrl</kbd> + <kbd>z</kbd> 작업 뒤로 돌리기</li>
+                                            <li><kbd>ctrl</kbd> + <kbd>y</kbd> 작업 앞으로 돌리기</li>
+                                        </ul>
+                                        <hr>
+                                        <div style="font-size: 1.2rem">shift 혼합 키</div>
+                                        <ul>
+                                            <li><kbd>shift</kbd> + <kbd>셀 호버</kbd> 셀 추가 버튼 표시</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
                     }
                 }
             };

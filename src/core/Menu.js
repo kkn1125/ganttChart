@@ -16,27 +16,32 @@ const Menu = (function (){
             tools: {
                 list: [
                     {
-                        tab: 'select all',
+                        tab: 'cursor mode : pen',
+                        id: 'penMode',
+                        active: false,
+                    },
+                    {
+                        tab: 'select : all',
                         id: 'selectAll',
                     },
                     {
-                        tab: 'delete all',
+                        tab: 'delete : all',
                         id: 'deleteAll',
                     },
                     {
-                        tab: 'layout auto',
+                        tab: 'layout : auto',
                         id: 'layoutAuto',
                     },
                     {
-                        tab: 'layout fixed',
+                        tab: 'layout : fixed',
                         id: 'layoutFixed'
                     },
                     {
-                        tab: 'add head',
+                        tab: 'add : head',
                         id: 'addRowHead',
                     },
                     {
-                        tab: 'add body',
+                        tab: 'add : body',
                         id: 'addRowBody',
                     },
                 ]
@@ -50,6 +55,10 @@ const Menu = (function (){
                     {
                         tab: 'gantt chart',
                         id: 'ganttChart',
+                    },
+                    {
+                        tab: 'help',
+                        id: 'showKeyBinding',
                     },
                 ]
             },
@@ -138,7 +147,7 @@ const Menu = (function (){
                 left: ${left}px;
              ">
                 ${[...list[type].list]
-                    .map((l)=>`<li${l.id?` id="${l.id}"`:''} class="tab">${l.tab}</li>`)
+                    .map((l)=>`<li${l.id?` id="${l.id}"`:''} class="tab${l.active?'togglable':''}">${l.tab}</li>`)
                     .join('')}
             </ul>`);
         }
