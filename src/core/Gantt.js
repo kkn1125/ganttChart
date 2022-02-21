@@ -990,7 +990,7 @@ export const Gantt = (function () {
 
         this.selectCell = function (closest){
             let start = selected.pop();
-            
+            if(!start) return;
             const endName = closest.tagName;
             const startName = start.el.tagName;
             const {rowid:endRowid, colid:endColid} = closest.attributes;
@@ -1715,7 +1715,7 @@ export const Gantt = (function () {
         this.controlSelectingBox = function (ev){
             let height = ev.clientY - startTop;
             let width = ev.clientX - startLeft;
-
+            if(!selectBox) return;
             if(ev.clientY<=startTop){
                 selectBox.classList.add('dashed', 'flip');
                 selectBox.style.top = `${ev.y}px`;
