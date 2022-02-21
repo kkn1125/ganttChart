@@ -76,13 +76,6 @@ export const Gantt = (function () {
             models.removeHandMode();
             models.clearSelectBox();
             models.clearSelected();
-            document.querySelectorAll('.control-list').forEach(el=>{
-                el.classList.add('out');
-                setTimeout(() => {
-                    el.remove();
-                }, 500);
-            });
-            document.querySelectorAll('.sheet-list').forEach(el=>el.remove());
         }
 
         this.cellConcat = function (ev){
