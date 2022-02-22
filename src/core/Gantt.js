@@ -85,6 +85,12 @@ export const Gantt = (function () {
             if(target.id!='cellConcat') return;
             
             models.cellConcat(closest);
+            document.querySelectorAll('.control-list').forEach(el=>{
+                el.classList.add('out');
+                setTimeout(() => {
+                    el.remove();
+                }, 500);
+            });
         }
 
         this.cellDivide = function (ev){
@@ -94,6 +100,12 @@ export const Gantt = (function () {
             if(target.id!='cellDivide') return;
 
             models.cellDivide(closest);
+            document.querySelectorAll('.control-list').forEach(el=>{
+                el.classList.add('out');
+                setTimeout(() => {
+                    el.remove();
+                }, 500);
+            });
         }
 
         this.clearpopupHotkey = function (ev){
@@ -855,23 +867,23 @@ export const Gantt = (function () {
 
         this.cellConcat = function (closest){
             const {type: name, rowid, colid} = closest.attributes;
-            this.concatByBase(name.value, rowid.value, colid.value);
-            console.log('합치기');
-            this.renderChartAddHistory();
+            // this.concatByBase(name.value, rowid.value, colid.value);
+            console.log('합치기 잠시 중단');
+            // this.renderChartAddHistory();
         }
 
         this.cellDivide = function (closest){
-            console.log('나누기');
-            selected.forEach(sel=>{
-                gantt[sel.el.tagName=='TH'?'head':'body'].map((row,ri)=>{
-                    return row.map((col,ci)=>{
-                        col.concat = false;
-                        col.rowSpan = 1;
-                        col.colSpan = 1;
-                    });
-                });
-            });
-            this.renderChartAddHistory();
+            console.log('나누기 잠시 중단');
+            // selected.forEach(sel=>{
+            //     gantt[sel.el.tagName=='TH'?'head':'body'].map((row,ri)=>{
+            //         return row.map((col,ci)=>{
+            //             col.concat = false;
+            //             col.rowSpan = 1;
+            //             col.colSpan = 1;
+            //         });
+            //     });
+            // });
+            // this.renderChartAddHistory();
         }
 
         this.removeGrabMode = function(){
@@ -1730,7 +1742,7 @@ export const Gantt = (function () {
 
                 beforeCopy.concat = col.concat;
                 beforeCopy.text = col.text;
-                beforeCopy.colSpan = col.colSpan;
+                beforeCopy.colSpan = col.colSpalive-n;
                 beforeCopy.rowSpan = 1;
 
                 col = {
