@@ -14,14 +14,14 @@ export const Gantt = (function () {
     textEdit.htmlToTa = (ta) => textEdit.nbspToSpace(textEdit.brToEnter(ta));
 
     textEdit.camelToKebab = (str) => {
-        let firstLower;
         let temp = str.match(/[A-Z][a-z]*/g);
-        if(temp) firstLower = str.split(temp[0])[0];
-        return ((firstLower?firstLower+'-':'')+str.match(/[A-Z][a-z]*/g)?.map(s=>s.toLowerCase()).join('-'))||str;
+        if(temp)
+        return str.split(temp[0])[0]+'-'+str.match(/[A-Z][a-z]*/g)?.map(s=>s.toLowerCase()).join('-');
+        else return str;
     };
 
     function Controller() {
-        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false, handMode=false, selectCount=0, cellEdit=false;
+        let models, save, saveContent, blockAutoChange = false, toggler = false, tempRow, tempCol, shift=false, mousedown=false, hoverCell, multiple=false, editSheet=false, handMode=false, selectCount=0, cellEdit=false, isInSame = false;
 
         this.init = function (model) {
             models = model;
@@ -225,6 +225,7 @@ export const Gantt = (function () {
                 ev.preventDefault();  
                 this.toggleInput({target: models.getSelected()});
             } else if(ev.key == 'Delete'){
+                if(cellEdit) return;
                 ev.preventDefault();
                 models.clearSelectedContent();
                 models.clearSelectBox();
@@ -255,6 +256,7 @@ export const Gantt = (function () {
         this.selectCell = function (ev){
             const target = ev.target;
             const closest = target.closest('th,td,.control-list');
+            if(!isInSame) return;
             if(ev.which == 2) return;
 
             if(!closest) {
@@ -316,7 +318,8 @@ export const Gantt = (function () {
                 if(!multiple && closest && ev.which == 1) {
                     models.clearSelected();
                 }
-                models.selectReadyCell(closest);
+                isInSame = models.selectReadyCell(closest);
+                if(isInSame)
                 models.renderSelectingBox(ev);
             }
         }
@@ -687,8 +690,7 @@ export const Gantt = (function () {
     }
 
     function Model() {
-        const copiedAttrs = {};
-        const copiedContents = {text: ''};
+        const copiedGantt = {text: '', attr: {}};
         const maxHistory = 30;
         let views;
         let ganttSheet = [];
@@ -711,6 +713,9 @@ export const Gantt = (function () {
                                 textAlign: 'left',
                                 verticalAlign: 'middle',
                             },
+                            colSpan: 1,
+                            rowSpan: 1,
+                            concat: false,
                         }
                     ],
                 ],
@@ -730,6 +735,9 @@ export const Gantt = (function () {
                                 textAlign: 'left',
                                 verticalAlign: 'middle',
                             },
+                            colSpan: 1,
+                            rowSpan: 1,
+                            concat: false,
                         }
                     ],
                 ],
@@ -754,6 +762,9 @@ export const Gantt = (function () {
                             textAlign: 'left',
                             verticalAlign: 'middel',
                         },
+                        colSpan: 1,
+                        rowSpan: 1,
+                        concat: false,
                     }
                 ],
             ],
@@ -773,6 +784,9 @@ export const Gantt = (function () {
                             textAlign: 'left',
                             verticalAlign: 'middel',
                         },
+                        colSpan: 1,
+                        rowSpan: 1,
+                        concat: false,
                     }
                 ],
             ],
@@ -944,9 +958,9 @@ export const Gantt = (function () {
             const {rowid, colid} = copyTarget.el.attributes;
             const ganttType = type=='TH'?'head':'body';
 
-            copiedContents.text = gantt[ganttType][rowid.value][colid.value].text;
-            Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
-            if(!copiedAttrs.hasOwnProperty('backgroundColor')) copiedAttrs['backgroundColor'] = '#ffffffff';
+            copiedGantt.text = gantt[ganttType][rowid.value][colid.value].text;
+            Object.assign(copiedGantt.attr, gantt[ganttType][rowid.value][colid.value].attr);
+            if(!copiedGantt.attr.hasOwnProperty('backgroundColor')) copiedGantt.attr['backgroundColor'] = '#ffffffff';
         }
 
         this.pasteHotKey = function (){
@@ -956,11 +970,11 @@ export const Gantt = (function () {
                 const {rowid, colid} = copyTarget.attributes;
                 const ganttType = type=='TH'?'head':'body';
                 
-                copyTarget.innerHTML = copiedContents.text;
+                copyTarget.innerHTML = copiedGantt.text;
                 
-                gantt[ganttType][rowid.value][colid.value].text = copiedContents.text;
+                gantt[ganttType][rowid.value][colid.value].text = copiedGantt.text;
 
-                Object.entries(copiedAttrs).forEach(([key, val])=>{
+                Object.entries(copiedGantt.attr).forEach(([key, val])=>{
                     copyTarget.style[key] = val;
                     gantt[ganttType][rowid.value][colid.value].attr[key] = val;
                 });
@@ -1008,6 +1022,7 @@ export const Gantt = (function () {
             for (let i = RowMin; i <= RowMax; i++) {
                 for (let q = ColMin; q <= ColMax; q++) {
                     let sameRange = document.querySelector(`${startName}[rowid="${i}"][colid="${q}"]`);
+                    if(sameRange)
                     temp.push(sameRange);
                 }
             }
@@ -1034,6 +1049,7 @@ export const Gantt = (function () {
             [...temp].forEach(el=>{
                 let {rowid, colid} = el.attributes;
                 let [row, col] = [parseInt(rowid.value), parseInt(colid.value)];
+                if(!selected.some(s=>s.el.tagName == closest.tagName && s.rowid == row && s.colid == col))
                 selected.push({el: el, obj:this.findGantt(el.tagName, el.attributes), rowid: row, colid: col})
             });
             
@@ -1062,7 +1078,10 @@ export const Gantt = (function () {
             let found = this.findGantt(closest.tagName, closest.attributes);
             let {rowid, colid} = closest.attributes;
             let [row, col] = [parseInt(rowid.value), parseInt(colid.value)];
+            let isInSame = !selected.some(s=>s.el.tagName == closest.tagName && s.rowid == row && s.colid == col);
+            if(isInSame)
             selected.push({el:closest, obj:found, rowid: row, colid: col});
+            return isInSame;
         }
 
         this.selectAll = function (){
@@ -1094,6 +1113,9 @@ export const Gantt = (function () {
                 return {
                     text: k.text,
                     attr: temp,
+                    rowSpan: k.rowSpan,
+                    colSpan: k.colSpan,
+                    concat: k.concat,
                 };
             }));
 
@@ -1103,6 +1125,9 @@ export const Gantt = (function () {
                 return {
                     text: k.text,
                     attr: temp,
+                    rowSpan: k.rowSpan,
+                    colSpan: k.colSpan,
+                    concat: k.concat,
                 };
             }));
 
@@ -1134,12 +1159,21 @@ export const Gantt = (function () {
         this.addInitailRowHead = function (){
             if(gantt.head.length==0 || gantt.head[0].every(a=>a.length==0)) {
                 let temp = {text: '', attr: {}};
-                Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+                Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-                temp.text = copiedContents.text;
+                temp.concat = copiedGantt.concat;
+                temp.text = copiedGantt.text;
+                temp.rowSpan = copiedGantt.rowSpan;
+                temp.colSpan = copiedGantt.colSpan;
                 gantt.head = [];
 
-                gantt.head.splice(0, 1, new Array(gantt.body[0].length>0?gantt.body[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+                gantt.head.splice(0, 1, new Array(gantt.body[0].length>0?gantt.body[0].length:1).fill({
+                    concat: temp.concat||'false',
+                    text: temp.text||'',
+                    attr: temp.attr||{},
+                    rowSpan: temp.rowSpan||1,
+                    colSpan: temp.colSpan||1,
+                }));
             }
 
             this.renderChartAddHistory();
@@ -1148,12 +1182,21 @@ export const Gantt = (function () {
         this.addInitailRowBody = function (){
             if(gantt.body.length==0 || gantt.body[0].every(a=>a.length==0)) {
                 let temp = {text: '', attr: {}};
-                Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+                Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-                temp.text = copiedContents.text;
+                temp.concat = copiedGantt.concat;
+                temp.text = copiedGantt.text;
+                temp.rowSpan = copiedGantt.rowSpan;
+                temp.colSpan = copiedGantt.colSpan;
                 gantt.body = [];
                 
-                gantt.body.splice(0, 1, new Array(gantt.head[0].length>0?gantt.head[0].length:1).fill({text: temp.text||'', attr: temp.attr||{}}));
+                gantt.body.splice(0, 1, new Array(gantt.head[0].length>0?gantt.head[0].length:1).fill({
+                    concat: temp.concat||'false',
+                    text: temp.text||'',
+                    attr: temp.attr||{},
+                    rowSpan: temp.rowSpan||1,
+                    colSpan: temp.colSpan||1,
+                }));
             }
 
             this.renderChartAddHistory();
@@ -1226,7 +1269,7 @@ export const Gantt = (function () {
         }
 
         this.clearCopiedContents = function (){
-            copiedContents.text = '';
+            copiedGantt.text = '';
         }
 
         this.emptyCopiedContents = function (target, controlList){
@@ -1240,9 +1283,9 @@ export const Gantt = (function () {
             const ganttType = type.value=='TH'?'head':'body';
             gantt[ganttType][rowid.value][colid.value].text = '';
 
-            gantt[ganttType][rowid.value][colid.value].text = copiedContents.text;
+            gantt[ganttType][rowid.value][colid.value].text = copiedGantt.text;
 
-            document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).innerHTML = copiedContents.text;
+            document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).innerHTML = copiedGantt.text;
 
             views.clearControlList();
 
@@ -1254,7 +1297,7 @@ export const Gantt = (function () {
 
             const {type, rowid, colid} = controlList.attributes;
             const ganttType = type.value=='TH'?'head':'body';
-            copiedContents.text = gantt[ganttType][rowid.value][colid.value].text;
+            copiedGantt.text = gantt[ganttType][rowid.value][colid.value].text;
 
             views.clearControlList();
 
@@ -1262,7 +1305,7 @@ export const Gantt = (function () {
         }
 
         this.clearCopiedAttrs = function (){
-            Object.keys(copiedAttrs).forEach(e=>delete copiedAttrs[e]);
+            Object.keys(copiedGantt.attr).forEach(e=>delete copiedGantt.attr[e]);
         }
 
         this.emptyCopiedAttrs = function (target, controlList){
@@ -1275,11 +1318,11 @@ export const Gantt = (function () {
             const ganttType = type.value=='TH'?'head':'body';
             gantt[ganttType][rowid.value][colid.value].attr = {};
 
-            Object.entries(copiedAttrs).forEach(([key, val])=>{
+            Object.entries(copiedGantt.attr).forEach(([key, val])=>{
                 gantt[ganttType][rowid.value][colid.value].attr[key] = val;
 
                 document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).style[key] = val;
-            })
+            });
 
             views.clearControlList();
             this.renderChartAddHistory();
@@ -1290,14 +1333,14 @@ export const Gantt = (function () {
 
             const {type, rowid, colid} = controlList.attributes;
             const ganttType = type.value=='TH'?'head':'body';
-            Object.assign(copiedAttrs, gantt[ganttType][rowid.value][colid.value].attr);
+            Object.assign(copiedGantt.attr, gantt[ganttType][rowid.value][colid.value].attr);
 
             views.clearControlList();
         }
 
         this.autoAttrsValueChange = function (target){
             
-            if(selected.length>0)
+            if(selected.length>1)
             selected.forEach(sel=>{
                 this.autoAttrsApply(target, sel);
             });
@@ -1393,7 +1436,7 @@ export const Gantt = (function () {
                 case 'TD': originData = gantt.body[rowId][colId]; break;
             }
 
-            views.popupControlList(closest, originData, ev, Object.keys(copiedAttrs).length, copiedContents.text!='');
+            views.popupControlList(closest, originData, ev, Object.keys(copiedGantt.attr).length, copiedGantt.text!='');
         }
 
         this.getSheetStorage = function (){
@@ -1459,6 +1502,23 @@ export const Gantt = (function () {
             if(!temp.hasOwnProperty('regdate')){
                 temp.regdate = new Date().getTime();
             }
+
+            temp.head.map(head=>{
+                return head.map(h=>{
+                    if(!h.hasOwnProperty('rowSpan')) h.rowSpan = 1;
+                    if(!h.hasOwnProperty('colSpan')) h.colSpan = 1;
+                    return h;
+                });
+            });
+
+            temp.body.map(body=>{
+                return body.map(b=>{
+                    if(!b.hasOwnProperty('rowSpan')) b.rowSpan = 1;
+                    if(!b.hasOwnProperty('colSpan')) b.colSpan = 1;
+                    return b;
+                });
+            });
+
             if(!temp.hasOwnProperty('head')){
                 temp.head = [];
             }
@@ -1551,84 +1611,142 @@ export const Gantt = (function () {
 
         this.addHeadRow = function(rowid, dir){
             let temp = {text: '', attr: {backgroundColor: '#ffffff'}};
-            Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+            Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-            temp.text = copiedContents.text;
+            temp.concat = copiedGantt.concat;
+            temp.text = copiedGantt.text;
+            temp.rowSpan = copiedGantt.rowSpan;
+            temp.colSpan = copiedGantt.colSpan;
 
             let isEmpty = Object.keys(temp.attr).length==0;
             let isContentsEmpty = temp.text=='';
+            let isRowSpan = temp.rowSpan==undefined;
+            let isColSpan = temp.colSpan==undefined;
 
             rowid = parseInt(rowid);
 
             gantt.head.splice((dir=='top'?rowid:rowid + 1), 0, [...gantt.head[rowid]].map((col, cid)=>{
                 let beforeCopy = {text: '', attr: {}};
                 Object.entries(col.attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
+                
+                beforeCopy.concat = col.concat;
                 beforeCopy.text = col.text;
+                beforeCopy.colSpan = col.colSpan;
+                beforeCopy.rowSpan = 1;
 
-                col = {text: isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}};
+                col = {
+                    concat: isContentsEmpty?beforeCopy.concat:temp.concat||'',
+                    text: isContentsEmpty?beforeCopy.text:temp.text||'',
+                    attr: isEmpty?beforeCopy.attr:temp.attr||{},
+                    rowSpan: isRowSpan?beforeCopy.rowSpan:temp.rowSpan,
+                    colSpan: isColSpan?beforeCopy.colSpan:temp.colSpan,
+                };
                 return col;
             }));
         }
 
         this.addBodyRow = function(rowid, dir){
             let temp = {text: '', attr: {}};
-            Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+            Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-            temp.text = copiedContents.text;
+            temp.concat = copiedGantt.concat;
+            temp.text = copiedGantt.text;
+            temp.rowSpan = copiedGantt.rowSpan;
+            temp.colSpan = copiedGantt.colSpan;
 
             let isEmpty = Object.keys(temp.attr).length==0;
             let isContentsEmpty = temp.text=='';
+            let isRowSpan = temp.rowSpan==undefined;
+            let isColSpan = temp.colSpan==undefined;
             
             rowid = parseInt(rowid);
 
             gantt.body.splice(dir=='top'?rowid:rowid + 1, 0, [...gantt.body[rowid]].map((col, cid)=>{
                 let beforeCopy = {text: '', attr: {}};
                 Object.entries(col.attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
-                beforeCopy.text = col.text;
 
-                col = {text: isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}};
+                beforeCopy.concat = col.concat;
+                beforeCopy.text = col.text;
+                beforeCopy.colSpan = col.colSpan;
+                beforeCopy.rowSpan = 1;
+
+                col = {
+                    concat: isContentsEmpty?beforeCopy.concat:temp.concat||'',
+                    text: isContentsEmpty?beforeCopy.text:temp.text||'',
+                    attr: isEmpty?beforeCopy.attr:temp.attr||{},
+                    rowSpan: isRowSpan?beforeCopy.rowSpan:temp.rowSpan,
+                    colSpan: isColSpan?beforeCopy.colSpan:temp.colSpan,
+                };
                 return col;
             }));
         }
 
         this.addHeadCol = function(colid, dir){
             let temp = {text: '', attr: {}};
-            Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+            Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-            temp.text = copiedContents.text;
+            temp.concat = copiedGantt.concat;
+            temp.text = copiedGantt.text;
+            temp.rowSpan = copiedGantt.rowSpan;
+            temp.colSpan = copiedGantt.colSpan;
 
             let isEmpty = Object.keys(temp.attr).length==0;
             let isContentsEmpty = temp.text=='';
+            let isRowSpan = temp.rowSpan==undefined;
+            let isColSpan = temp.colSpan==undefined;
 
             colid = parseInt(colid);
 
             gantt.head.map(row=>{
                 let beforeCopy = {text: '', attr: {}};
-                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
-                beforeCopy.text = row[colid].text;
+                Object.entries(row[row.length-1].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
+                beforeCopy.concat = row[row.length-1].concat;
+                beforeCopy.text = row[row.length-1].text;
+                beforeCopy.colSpan = 1;
+                beforeCopy.rowSpan = row[row.length-1].rowSpan;
 
-                row.splice((dir=='left'?colid:colid + 1), 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
+                row.splice((dir=='left'?row.length-1:row.length-1 + 1), 0, {
+                    concat:isContentsEmpty?beforeCopy.concat:temp.concat||'',
+                    text:isContentsEmpty?beforeCopy.text:temp.text||'',
+                    attr: isEmpty?beforeCopy.attr:temp.attr||{},
+                    rowSpan: isRowSpan?beforeCopy.rowSpan:temp.rowSpan,
+                    colSpan: isColSpan?beforeCopy.colSpan:temp.colSpan,
+                });
                 return row;
             });
         }
 
         this.addBodyCol = function(colid, dir){
             let temp = {text: '', attr: {}};
-            Object.entries(copiedAttrs).forEach(([k,v])=>temp.attr[k]=v);
+            Object.entries(copiedGantt.attr).forEach(([k,v])=>temp.attr[k]=v);
 
-            temp.text = copiedContents.text;
+            temp.concat = copiedGantt.concat;
+            temp.text = copiedGantt.text;
+            temp.rowSpan = copiedGantt.rowSpan;
+            temp.colSpan = copiedGantt.colSpan;
 
             let isEmpty = Object.keys(temp.attr).length==0;
             let isContentsEmpty = temp.text=='';
+            let isRowSpan = temp.rowSpan==undefined;
+            let isColSpan = temp.colSpan==undefined;
 
             colid = parseInt(colid);
 
             gantt.body.map(row=>{
                 let beforeCopy = {text: '', attr: {}};
-                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
-                beforeCopy.text = row[colid].text;
+                Object.entries(row[row.length-1].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
+                beforeCopy.concat = row[row.length-1].concat;
+                beforeCopy.text = row[row.length-1].text;
+                beforeCopy.colSpan = 1;
+                beforeCopy.rowSpan = row[row.length-1].rowSpan;
 
-                row.splice((dir=='left'?colid:colid + 1), 0, {text:isContentsEmpty?beforeCopy.text:temp.text||'', attr: isEmpty?beforeCopy.attr:temp.attr||{}});
+                row.splice((dir=='left'?row.length-1:row.length-1 + 1), 0, {
+                    concat:isContentsEmpty?beforeCopy.concat:temp.concat||'',
+                    text:isContentsEmpty?beforeCopy.text:temp.text||'',
+                    attr: isEmpty?beforeCopy.attr:temp.attr||{},
+                    rowSpan: isRowSpan?beforeCopy.rowSpan:temp.rowSpan,
+                    colSpan: isColSpan?beforeCopy.colSpan:temp.colSpan,
+                });
                 return row;
             });
         }
