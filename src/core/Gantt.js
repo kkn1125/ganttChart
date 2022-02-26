@@ -1742,7 +1742,7 @@ export const Gantt = (function () {
 
                 beforeCopy.concat = col.concat;
                 beforeCopy.text = col.text;
-                beforeCopy.colSpan = col.colSpalive-n;
+                beforeCopy.colSpan = col.colSpan;
                 beforeCopy.rowSpan = 1;
 
                 col = {
