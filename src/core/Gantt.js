@@ -1,4 +1,4 @@
-console.warn(`[GanttChart] 현재 버전 : v0.2.8`);
+console.warn(`[GanttChart] 현재 버전 : v0.2.9`);
 export const Gantt = (function () {
     const ganttWrap = document.querySelector('#ganttWrap');
     const ganttWorkSpace = document.querySelector('.gantt-workspace');
@@ -120,7 +120,7 @@ export const Gantt = (function () {
             const target = ev.target;
             const closest = target.closest('.sheet-list, .work input');
             if(ev.which == 2) return;
-
+            
             if(!closest) {
                 editSheet = false;
                 models.saveWorkSheetName(target);
@@ -346,14 +346,14 @@ export const Gantt = (function () {
         }
 
         this.workUndo = function (ev){
-            if(ev.code == 'Space' && !cellEdit) ev.preventDefault();
+            if(ev.code == 'Space' && !cellEdit && !editSheet) ev.preventDefault();
             if(!(ev.key=='z' && ev.ctrlKey)) return;
             
             models.workUndo();
         }
 
         this.workRedo = function (ev){
-            if(ev.code == 'Space' && !cellEdit) ev.preventDefault();
+            if(ev.code == 'Space' && !cellEdit && !editSheet) ev.preventDefault();
             if(!(ev.key=='y' && ev.ctrlKey)) return;
 
             models.workRedo();
@@ -839,7 +839,7 @@ export const Gantt = (function () {
                     gantt[tempCol[0][0]][tempRow[0][1]][cid].text += ' ' + pop.text;
                 }
             } else {
-                console.log('row:안됨');
+                // console.log('row:안됨');
             }
 
             if(this.isCascade(tempCol)){
@@ -851,7 +851,7 @@ export const Gantt = (function () {
                     gantt[tempCol[0][0]][rid][tempCol[0][1]].text += ' ' + pop.text;
                 }
             } else {
-                console.log('col:안됨');
+                // console.log('col:안됨');
             }
         }
 
@@ -1774,13 +1774,13 @@ export const Gantt = (function () {
 
             gantt.head.map(row=>{
                 let beforeCopy = {text: '', attr: {}};
-                Object.entries(row[row.length-1].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
-                beforeCopy.concat = row[row.length-1].concat;
-                beforeCopy.text = row[row.length-1].text;
+                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
+                beforeCopy.concat = row[colid].concat;
+                beforeCopy.text = row[colid].text;
                 beforeCopy.colSpan = 1;
-                beforeCopy.rowSpan = row[row.length-1].rowSpan;
+                beforeCopy.rowSpan = row[colid].rowSpan;
 
-                row.splice((dir=='left'?row.length-1:row.length-1 + 1), 0, {
+                row.splice((dir=='left'?colid:colid + 1), 0, {
                     concat:isContentsEmpty?beforeCopy.concat:temp.concat||'',
                     text:isContentsEmpty?beforeCopy.text:temp.text||'',
                     attr: isEmpty?beforeCopy.attr:temp.attr||{},
@@ -1808,13 +1808,13 @@ export const Gantt = (function () {
 
             gantt.body.map(row=>{
                 let beforeCopy = {text: '', attr: {}};
-                Object.entries(row[row.length-1].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
-                beforeCopy.concat = row[row.length-1].concat;
-                beforeCopy.text = row[row.length-1].text;
+                Object.entries(row[colid].attr).forEach(([k,v])=>beforeCopy.attr[k]=v);
+                beforeCopy.concat = row[colid].concat;
+                beforeCopy.text = row[colid].text;
                 beforeCopy.colSpan = 1;
-                beforeCopy.rowSpan = row[row.length-1].rowSpan;
+                beforeCopy.rowSpan = row[colid].rowSpan;
 
-                row.splice((dir=='left'?row.length-1:row.length-1 + 1), 0, {
+                row.splice((dir=='left'?colid:colid + 1), 0, {
                     concat:isContentsEmpty?beforeCopy.concat:temp.concat||'',
                     text:isContentsEmpty?beforeCopy.text:temp.text||'',
                     attr: isEmpty?beforeCopy.attr:temp.attr||{},
