@@ -160,7 +160,8 @@ export const Gantt = (function () {
             switch(target.id){
                 case 'layoutAuto': case 'layoutFixed':
                     const mode = target.textContent.split(' ').pop();
-                    document.querySelector('table#chart').style.tableLayout = mode;
+                    models.changeLayout(mode);
+                    // document.querySelector('table#chart').style.tableLayout = mode;
                     break;
                 case 'addRowHead': case 'addRowBody':
                     this.addInitialRow({target: target});
@@ -752,6 +753,7 @@ export const Gantt = (function () {
                     ],
                 ],
                 regdate: new Date().getTime(),
+                layout: 'auto',
             }
         };
         let gantt = {
@@ -801,6 +803,7 @@ export const Gantt = (function () {
                 ],
             ],
             regdate: new Date().getTime(),
+            layout: 'auto',
         };
         let history = [];
         let hisIndex = 0;
@@ -1514,10 +1517,18 @@ export const Gantt = (function () {
             views.popupControlList(closest, originData, ev, Object.keys(copiedGantt.attr).length, copiedGantt.text!='');
         }
 
+        this.changeLayout = function (mode){
+            gantt.layout = mode;
+
+            this.renderChartAddHistory();
+        }
+
         this.getSheetStorage = function (){
             let temp;
             if(!localStorage['ganttSheet']) this.setSheetStorage(ganttSheet);
             if(localStorage['ganttSheet']) temp = JSON.parse(localStorage['ganttSheet']);
+            
+            temp.map(tmp=>this.validGantt(tmp));
             
             if(!temp.some(g=>g.id==gantt.id)){
                 temp.push(gantt);
@@ -1576,6 +1587,9 @@ export const Gantt = (function () {
             }
             if(!temp.hasOwnProperty('regdate')){
                 temp.regdate = new Date().getTime();
+            }
+            if(!temp.hasOwnProperty('layout')){
+                temp.layout = 'auto';
             }
 
             temp.head.map(head=>{
@@ -1870,6 +1884,10 @@ export const Gantt = (function () {
             this.renderTable();
         }
 
+        this.initChart = function (layout){
+            chart.style.tableLayout = layout;
+        }
+
         this.popupControlSheet = function (closest, id){
             parts.sheetList.render(closest, id);
         }
@@ -1940,6 +1958,8 @@ export const Gantt = (function () {
         }
 
         this.renderChart = function (gantt) {
+            this.initChart(gantt.layout);
+            
             this.clearThead();
             this.clearTbody();
             this.clearBtns();
@@ -2036,7 +2056,7 @@ export const Gantt = (function () {
             const parts = {
                 table: {
                     render(target){
-                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="table-layout:auto;border-collapse:collapse!important;width: 100%!important;border-spacing: 0!important;">
+                        target.insertAdjacentHTML('beforeend',`<table id="chart" style="border-collapse:collapse!important;width: 100%!important;border-spacing: 0!important;">
                             <thead id="thead">
                                 
                             </thead>
