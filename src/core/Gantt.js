@@ -1,4 +1,4 @@
-console.warn(`[GanttChart] 현재 버전 : v0.2.9`);
+console.warn(`[GanttChart] 현재 버전 : v0.3.0`);
 export const Gantt = (function () {
     const ganttWrap = document.querySelector('#ganttWrap');
     const ganttWorkSpace = document.querySelector('.gantt-workspace');
@@ -947,7 +947,30 @@ export const Gantt = (function () {
                 case 'workRemove':
                     this.removeWork(closest.id);
                     break;
+                case 'workDup':
+                    this.duplicateWork(closest.id);
+                    break;
             }
+        }
+
+        this.duplicateWork = function (id){
+            const target = ganttSheet[this.findGanttSheet(id)[1]];
+            const tempGantt = JSON.parse(JSON.stringify(target));
+            console.log(target)
+            const origin = tempGantt.title.split('-');
+            const first = origin[0].trim();
+            // const second = origin[1]?.trim();
+            const last = ganttSheet.filter(sh=>sh.title.match(first)).pop();
+            console.log(last)
+            let counting = last.title.match(/\(([0-9]+)\)/);
+            counting = counting?counting[1]:0;
+            tempGantt.id = new Date().getTime().toString(36);
+            tempGantt.regdate = new Date().getTime();
+            tempGantt.title = first + ` - copy(${parseInt(counting)+1})`;
+
+            ganttSheet.push(tempGantt);
+            gantt = tempGantt;
+            this.renderChartAddHistory();
         }
 
         this.renameWork = function (id){
@@ -2080,6 +2103,7 @@ export const Gantt = (function () {
                             ">
                                 <button class="btn" id="workRename">rename</button>
                                 <button class="btn" id="workRemove">remove</button>
+                                <button class="btn" id="workDup">duplicate</button>
                             </ul>
                         `);
                     }
