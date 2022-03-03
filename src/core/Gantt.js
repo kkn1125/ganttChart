@@ -2035,11 +2035,16 @@ export const Gantt = (function () {
         }
 
         this.renderSheets = function (sheets, id){
+            const div = document.createElement('div');
+            div.classList.add('work-wrap');
             this.clearSheetBar();
 
+            document.querySelector('.work-tabs').append(div);
+
             sheets.forEach(sh=>{
-                document.querySelector('.work-tabs').insertAdjacentHTML('beforeend', `<span id="${sh.id}" class="work${sh.id==id?' selected':''}">${sh.title}</span>`);
+                document.querySelector('.work-tabs .work-wrap').insertAdjacentHTML('beforeend', `<span id="${sh.id}" class="work${sh.id==id?' selected':''}">${sh.title}</span>`);
             });
+            
 
             document.querySelector('.work-tabs').insertAdjacentHTML('beforeend', `<span class="work add-work">+</span>`);
         }
@@ -2054,7 +2059,7 @@ export const Gantt = (function () {
         }
         
         this.clearSheetBar = function (){
-            document.querySelectorAll('.work').forEach(el=>el?.remove());
+            document.querySelector('.work-tabs').innerHTML = '';
         }
 
         this.clearControlList = function (){
