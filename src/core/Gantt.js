@@ -1058,7 +1058,9 @@ export const Gantt = (function () {
 
             copiedGantt.text = gantt[ganttType][rowid.value][colid.value].text;
             copiedGantt.concat = gantt[ganttType][rowid.value][colid.value].concat;
+
             Object.assign(copiedGantt.attr, gantt[ganttType][rowid.value][colid.value].attr);
+
             if(!copiedGantt.attr.hasOwnProperty('backgroundColor')) copiedGantt.attr['backgroundColor'] = '#ffffffff';
         }
 
@@ -1069,10 +1071,10 @@ export const Gantt = (function () {
                 const {rowid, colid} = copyTarget.attributes;
                 const ganttType = type=='TH'?'head':'body';
                 
-                copyTarget.innerHTML = copiedGantt.text;
-                
+                if(copiedGantt.text)
                 gantt[ganttType][rowid.value][colid.value].text = copiedGantt.text;
-                gantt[ganttType][rowid.value][colid.value].concat = copiedGantt.concat;
+
+                // gantt[ganttType][rowid.value][colid.value].concat = copiedGantt.concat;
 
                 Object.entries(copiedGantt.attr).forEach(([key, val])=>{
                     copyTarget.style[key] = val;
@@ -1383,11 +1385,10 @@ export const Gantt = (function () {
         this.pasteCopiedContents = function (target, controlList){
             const {type, rowid, colid} = controlList.attributes;
             const ganttType = type.value=='TH'?'head':'body';
-            gantt[ganttType][rowid.value][colid.value].text = '';
+            // gantt[ganttType][rowid.value][colid.value].text = '';
 
+            if(copiedGantt.text!='')
             gantt[ganttType][rowid.value][colid.value].text = copiedGantt.text;
-
-            document.querySelector(`${type.value}[rowid="${rowid.value}"][colid="${colid.value}"]`).innerHTML = copiedGantt.text;
 
             views.clearControlList();
 
@@ -1418,7 +1419,6 @@ export const Gantt = (function () {
         this.pasteCopiedAttrs = function (target, controlList){
             const {type, rowid, colid} = controlList.attributes;
             const ganttType = type.value=='TH'?'head':'body';
-            gantt[ganttType][rowid.value][colid.value].attr = {};
 
             Object.entries(copiedGantt.attr).forEach(([key, val])=>{
                 gantt[ganttType][rowid.value][colid.value].attr[key] = val;
