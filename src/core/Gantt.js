@@ -302,6 +302,7 @@ export const Gantt = (function () {
         }
 
         this.selectReadyCell = function (ev){
+            if(cellEdit) return;
             const target = ev.target;
             const closest = target.closest('th,td,.control-list');
             if(ev.which == 2) return;
@@ -2003,6 +2004,8 @@ export const Gantt = (function () {
                     th.hidden = cols.concat;
 
                     th.innerHTML = textEdit.taToHTML(cols.text);
+                    th.style.wordBreak = 'break-word'; // +
+                    
                     th.setAttribute('rowId', rowId);
                     th.setAttribute('colId', colId);
                     tr.append(th);
@@ -2026,6 +2029,8 @@ export const Gantt = (function () {
                     td.hidden = cols.concat;
 
                     td.innerHTML = textEdit.taToHTML(cols.text);
+                    td.style.wordBreak = 'break-word'; // +
+                    
                     td.setAttribute('rowId', rowId);
                     td.setAttribute('colId', colId);
                     tr.append(td);
