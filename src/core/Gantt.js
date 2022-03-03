@@ -213,6 +213,7 @@ export const Gantt = (function () {
         this.hotKey = function (ev){
             if(editSheet) return;
             if(handMode) return;
+            if(cellEdit) return;
 
             if(ev.ctrlKey && ev.key == 'c'){
                 ev.preventDefault();
@@ -220,7 +221,7 @@ export const Gantt = (function () {
             } else if(ev.ctrlKey && ev.key == 'v'){
                 ev.preventDefault();
                 models.pasteHotKey();
-            } else if(ev.ctrlKey && ev.key == 'a' && !cellEdit){
+            } else if(ev.ctrlKey && ev.key == 'a'){
                 ev.preventDefault();
                 selectCount = 0;
                 models.selectAll();
@@ -228,7 +229,6 @@ export const Gantt = (function () {
                 ev.preventDefault();
                 models.deleteAll();
             } else if(ev.code == 'Space'){
-                if(cellEdit) return; 
                 ev.preventDefault();
                 if(!handMode) {
                     handMode = true;
@@ -238,7 +238,7 @@ export const Gantt = (function () {
                 ev.preventDefault();  
                 this.toggleInput({target: models.getSelected()});
             } else if(ev.key == 'Delete'){
-                if(cellEdit) return;
+                
                 ev.preventDefault();
                 models.clearSelectedContent();
                 models.clearSelectBox();
