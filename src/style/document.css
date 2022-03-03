@@ -161,6 +161,10 @@ span.box {
   box-shadow: 0 0 0 0.2rem #fa97bd;
 }
 
+.sheet-list {
+  white-space: nowrap;
+}
+
 footer {
   background: #333333;
   border-top: 1px solid gray;
