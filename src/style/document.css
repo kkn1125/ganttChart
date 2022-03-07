@@ -185,6 +185,7 @@ footer .work-tabs {
   padding-bottom: 1rem;
 }
 footer .work-tabs .work-wrap {
+  display: flex;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;

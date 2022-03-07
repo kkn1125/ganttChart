@@ -1,4 +1,4 @@
-console.warn(`[GanttChart] 현재 버전 : v0.3.0`);
+console.warn(`[GanttChart] 현재 버전 : v0.3.1`);
 export const Gantt = (function () {
     const ganttWrap = document.querySelector('#ganttWrap');
     const ganttWorkSpace = document.querySelector('.gantt-workspace');
@@ -1645,7 +1645,7 @@ export const Gantt = (function () {
         this.exportResult = function (target){
             const ganttBody = document.querySelector("#gantt #chart");
             
-            navigator.clipboard.writeText(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' ')).then(
+            navigator.clipboard.writeText(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' ')+`<span style="font-size: 0.7rem; line-height: 0.5rem; color: white; background-color: rgb(165 39 229 / 50%); padding: .1rem .3rem; border-radius: .3rem;">Made with Kimson's Gantt Chart</span>`).then(
             clipText => {/** console.log(document.querySelector("#ganttWrap").innerHTML.trim().replace(/\s{2,}/g, ' '),'를 복사했습니다') */});
         }
 
